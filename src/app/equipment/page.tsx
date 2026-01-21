@@ -91,85 +91,79 @@ export default function EquipmentPage() {
     return (
       <div
         key={item.id}
-        className={`group relative overflow-hidden rounded-2xl border-2 transition-all duration-300 hover:scale-105 hover:shadow-2xl ${statusColor.border} ${statusColor.bg}`}
+        className={`group relative overflow-hidden rounded-3xl border border-white/30 bg-white/60 backdrop-blur-xl shadow-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${statusColor.border}`}
       >
-        {/* Animated background gradient */}
-        <div className="absolute -inset-full bg-gradient-to-br from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rotate-45 group-hover:rotate-12 group-hover:scale-150"></div>
-        
-        <div className="relative p-6 h-full flex flex-col backdrop-blur-sm">
+        {/* Glow + sheen */}
+        <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+        <div className="absolute -left-16 top-0 h-full w-32 bg-gradient-to-b from-white/50 to-transparent opacity-30 rotate-6 group-hover:translate-x-10 transition-all duration-500"></div>
+
+        <div className="relative p-4 h-full flex flex-col gap-4">
           {/* Header */}
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className={`p-3 rounded-xl bg-white/20 backdrop-blur group-hover:scale-110 transition-transform duration-300 ${statusColor.text}`}>
-                <TypeIcon size={24} />
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-4">
+              <div className={`h-10 w-10 rounded-2xl bg-gradient-to-br from-white/80 to-white/40 flex items-center justify-center shadow-inner border border-white/40 ${statusColor.text}`}>
+                <TypeIcon size={16} />
               </div>
-              <div>
-                <h3 className="font-bold text-lg text-slate-900 line-clamp-2">{item.name}</h3>
-                <p className={`text-sm font-medium ${statusColor.text}`}>{getTypeLabel(item.type)}</p>
+              <div className="space-y-1">
+                <h3 className="font-bold text-base text-slate-900 line-clamp-2">{item.name || 'Équipement'}</h3>
+                  <p className="text-xs text-slate-500">{getTypeLabel(item.type)}</p>
               </div>
             </div>
-          </div>
-
-          {/* Status Badge */}
-          <div className="mb-4">
-            <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${statusColor.badge}`}>
-              {item.status === 'in-service' && '✅ En service'}
-              {item.status === 'stock' && '📦 Stock'}
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold shadow-sm ${statusColor.badge}`}>
+              {item.status === 'in-service' ? '✅ En service' : '📦 Stock'}
             </span>
           </div>
 
-          {/* Details */}
-          <div className="flex-1 space-y-3 text-sm">
-            {item.serialNumber && (
-              <div className="flex justify-between">
-                <span className="text-slate-600 font-medium">N° Série:</span>
-                <span className="text-slate-900 font-semibold">{item.serialNumber}</span>
-              </div>
-            )}
-            {item.hardwareId && (
-              <div className="flex justify-between">
-                <span className="text-slate-600 font-medium">IMEI:</span>
-                <span className="text-slate-900 font-semibold">{item.hardwareId}</span>
-              </div>
-            )}
-            {item.ipAddress && (
-              <div className="flex justify-between">
-                <span className="text-slate-600 font-medium">Adresse IP:</span>
-                <span className="text-slate-900 font-semibold font-mono text-xs">{item.ipAddress}</span>
-              </div>
-            )}
+          {/* Key facts pills */}
+          <div className="flex flex-wrap gap-2 text-xs">
+            {item.serialNumber && <span className="px-2.5 py-1 rounded-full bg-white/70 border border-white/50 text-slate-700">SN: {item.serialNumber}</span>}
+            {item.hardwareId && <span className="px-2.5 py-1 rounded-full bg-white/70 border border-white/50 text-slate-700">IMEI: {item.hardwareId}</span>}
+            {item.ipAddress && <span className="px-2.5 py-1 rounded-full bg-white/70 border border-white/50 text-slate-700 font-mono">IP: {item.ipAddress}</span>}
             {item.assignedToUser && item.status === 'in-service' && (
-              <div className="flex justify-between">
-                <span className="text-slate-600 font-medium">Assigné à:</span>
-                <span className="text-slate-900 font-semibold">{item.assignedToUser}</span>
+              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-semibold">👤 {item.assignedToUser}</span>
+            )}
+          </div>
+
+          {/* Details grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            {item.dateInService && item.status === 'in-service' && (
+              <div className="flex items-center gap-2 text-slate-600">
+                <span className="text-xs px-2 py-1 rounded bg-white/60 border border-white/40">📅</span>
+                <div>
+                  <p className="text-xs text-slate-500">Mis en service</p>
+                  <p className="font-semibold text-slate-900">{new Date(item.dateInService).toLocaleDateString('fr-FR')}</p>
+                </div>
               </div>
             )}
-            {item.dateInService && item.status === 'in-service' && (
-              <div className="flex justify-between">
-                <span className="text-slate-600 font-medium">Mis en service:</span>
-                <span className="text-slate-900 font-semibold">{new Date(item.dateInService).toLocaleDateString('fr-FR')}</span>
+            {item.status === 'stock' && (
+              <div className="flex items-center gap-2 text-slate-600">
+                <span className="text-xs px-2 py-1 rounded bg-white/60 border border-white/40">⏳</span>
+                <div>
+                  <p className="text-xs text-slate-500">Disponibilité</p>
+                  <p className="font-semibold text-slate-900">En stock</p>
+                </div>
               </div>
             )}
           </div>
 
           {/* Actions */}
-          <div className="flex gap-2 mt-4 pt-4 border-t border-white/20">
+          <div className="flex items-center justify-center gap-2 pt-3 border-t border-white/30">
             <button
               onClick={() => {
                 setEditingId(item.id);
                 setFormData(item);
                 setShowModal(true);
               }}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-500/80 text-white rounded-lg hover:bg-blue-600 transition-all duration-300 font-medium group/btn"
+              className="inline-flex items-center justify-center gap-2 px-3 py-1.5 min-w-[88px] rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-semibold shadow hover:shadow-lg hover:scale-[1.02] transition-all"
             >
-              <Edit2 size={16} className="group-hover/btn:rotate-12 transition-transform" />
+              <Edit2 size={12} />
               <span className="hidden sm:inline">Modifier</span>
             </button>
             <button
               onClick={() => deleteEquipment(item.id)}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-500/80 text-white rounded-lg hover:bg-red-600 transition-all duration-300 font-medium group/btn"
+              className="inline-flex items-center justify-center gap-2 px-3 py-1.5 min-w-[88px] rounded-xl bg-gradient-to-r from-rose-500 to-red-500 text-white font-semibold shadow hover:shadow-lg hover:scale-[1.02] transition-all"
             >
-              <Trash2 size={16} className="group-hover/btn:scale-110 transition-transform" />
+              <Trash2 size={12} />
               <span className="hidden sm:inline">Supprimer</span>
             </button>
           </div>
@@ -184,8 +178,8 @@ export default function EquipmentPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Gestion des Équipements</h1>
-            <p className="text-slate-600 mt-2 text-lg">Gérez votre matériel informatique en service et en stock</p>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Gestion des Équipements</h1>
+            <p className="text-slate-600 mt-2 text-sm">Gérez votre matériel informatique en service et en stock</p>
           </div>
           <button
             onClick={() => {
@@ -193,9 +187,9 @@ export default function EquipmentPage() {
               setFormData({ type: 'laptop', status: 'stock' });
               setShowModal(true);
             }}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 font-semibold group"
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-sm rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 font-semibold group"
           >
-            <Plus size={22} className="group-hover:rotate-90 transition-transform duration-300" />
+            <Plus size={16} className="group-hover:rotate-90 transition-transform duration-300" />
             Ajouter un équipement
           </button>
         </div>
@@ -204,7 +198,7 @@ export default function EquipmentPage() {
         <div className="flex gap-3 flex-wrap">
           <button
             onClick={() => setFilterStatus('all')}
-            className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
               filterStatus === 'all'
                 ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg scale-105'
                 : 'bg-white/50 backdrop-blur-lg border border-white/30 text-slate-900 hover:bg-white/70'
@@ -214,7 +208,7 @@ export default function EquipmentPage() {
           </button>
           <button
             onClick={() => setFilterStatus('in-service')}
-            className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
               filterStatus === 'in-service'
                 ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg scale-105'
                 : 'bg-white/50 backdrop-blur-lg border border-white/30 text-slate-900 hover:bg-white/70'
@@ -224,7 +218,7 @@ export default function EquipmentPage() {
           </button>
           <button
             onClick={() => setFilterStatus('stock')}
-            className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
               filterStatus === 'stock'
                 ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg scale-105'
                 : 'bg-white/50 backdrop-blur-lg border border-white/30 text-slate-900 hover:bg-white/70'
@@ -248,16 +242,16 @@ export default function EquipmentPage() {
                     setEditingId(null);
                     setFormData({ type: 'laptop', status: 'stock' });
                   }}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                 >
-                  <X size={24} />
+                  <X size={18} />
                 </button>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
                   <div className="group">
-                    <label className="block text-sm font-semibold text-slate-900 mb-2">Marque *</label>
+                    <label className="block text-xs font-semibold text-slate-900 mb-2">Marque *</label>
                     <input
                       type="text"
                       value={formData.name || ''}
@@ -269,7 +263,7 @@ export default function EquipmentPage() {
                   </div>
 
                   <div className="group">
-                    <label className="block text-sm font-semibold text-slate-900 mb-2">Type d'équipement *</label>
+                    <label className="block text-xs font-semibold text-slate-900 mb-2">Type d'équipement *</label>
                     <select
                       value={formData.type || ''}
                       onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
@@ -285,7 +279,7 @@ export default function EquipmentPage() {
                   </div>
 
                   <div className="group">
-                    <label className="block text-sm font-semibold text-slate-900 mb-2">Numéro de série *</label>
+                    <label className="block text-xs font-semibold text-slate-900 mb-2">Numéro de série *</label>
                     <input
                       type="text"
                       value={formData.serialNumber || ''}
@@ -297,7 +291,7 @@ export default function EquipmentPage() {
                   </div>
 
                   <div className="group">
-                    <label className="block text-sm font-semibold text-slate-900 mb-2">Identifiant matériel (IMEI)</label>
+                    <label className="block text-xs font-semibold text-slate-900 mb-2">Identifiant matériel (IMEI)</label>
                     <input
                       type="text"
                       value={formData.hardwareId || ''}
@@ -308,7 +302,7 @@ export default function EquipmentPage() {
                   </div>
 
                   <div className="group">
-                    <label className="block text-sm font-semibold text-slate-900 mb-2">Statut *</label>
+                    <label className="block text-xs font-semibold text-slate-900 mb-2">Statut *</label>
                     <select
                       value={formData.status || ''}
                       onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
@@ -323,7 +317,7 @@ export default function EquipmentPage() {
                   {formData.status === 'in-service' && (
                     <>
                       <div className="group">
-                        <label className="block text-sm font-semibold text-slate-900 mb-2">Utilisateur assigné</label>
+                        <label className="block text-xs font-semibold text-slate-900 mb-2">Utilisateur assigné</label>
                         <input
                           type="text"
                           value={formData.assignedToUser || ''}
@@ -334,7 +328,7 @@ export default function EquipmentPage() {
                       </div>
 
                       <div className="group">
-                        <label className="block text-sm font-semibold text-slate-900 mb-2">Date de mise en service</label>
+                        <label className="block text-xs font-semibold text-slate-900 mb-2">Date de mise en service</label>
                         <input
                           type="date"
                           value={formData.dateInService ? new Date(formData.dateInService).toISOString().split('T')[0] : ''}
@@ -349,7 +343,7 @@ export default function EquipmentPage() {
                 <div className="flex gap-3 pt-6 border-t border-white/20">
                   <button
                     type="submit"
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 font-semibold"
+                    className="flex-1 px-3 py-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-xs rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 font-semibold"
                   >
                     {editingId ? '💾 Mettre à jour' : '✅ Ajouter'}
                   </button>
@@ -360,7 +354,7 @@ export default function EquipmentPage() {
                       setEditingId(null);
                       setFormData({ type: 'laptop', status: 'stock' });
                     }}
-                    className="flex-1 px-6 py-3 bg-slate-200 text-slate-700 rounded-xl hover:bg-slate-300 transition-all duration-300 font-semibold"
+                    className="flex-1 px-3 py-1.5 bg-slate-200 text-slate-700 text-xs rounded-xl hover:bg-slate-300 transition-all duration-300 font-semibold"
                   >
                     ❌ Annuler
                   </button>
@@ -377,7 +371,7 @@ export default function EquipmentPage() {
               <h2 className="text-2xl font-bold text-slate-900">✅ Équipements en Service</h2>
               <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-sm font-bold">{equipmentInService.length}</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {equipmentInService.map((item) => (
                 <EquipmentCard key={item.id} item={item} />
               ))}
@@ -392,7 +386,7 @@ export default function EquipmentPage() {
               <h2 className="text-2xl font-bold text-slate-900">📦 Matériel Disponible (Stock)</h2>
               <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-bold">{equipmentInStock.length}</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {equipmentInStock.map((item) => (
                 <EquipmentCard key={item.id} item={item} />
               ))}
