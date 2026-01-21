@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { Menu, X, Bell, LogOut, Settings, Search, Home, Zap, Users, Globe, Cpu, Ticket } from 'lucide-react';
 
 interface LayoutProps {
@@ -8,8 +9,9 @@ interface LayoutProps {
 }
 
 export const MainLayout = ({ children }: LayoutProps) => {
+  const router = useRouter();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeItem, setActiveItem] = useState('/');
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
   const menuItems = [
@@ -56,13 +58,13 @@ export const MainLayout = ({ children }: LayoutProps) => {
         <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activeItem === item.href;
+            const isActive = pathname === item.href;
             const isHovered = hoveredItem === item.href;
             
             return (
               <button
                 key={item.href}
-                onClick={() => setActiveItem(item.href)}
+                onClick={() => router.push(item.href)}
                 onMouseEnter={() => setHoveredItem(item.href)}
                 onMouseLeave={() => setHoveredItem(null)}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-300 group relative overflow-hidden ${

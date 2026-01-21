@@ -16,19 +16,13 @@ export interface IPAddress {
 export interface Equipment {
   id: string;
   name: string;
-  type: 'server' | 'workstation' | 'printer' | 'network' | 'other';
-  manufacturer: string;
-  model: string;
+  type: 'laptop' | 'printer' | 'phone' | 'network' | 'other';
   serialNumber: string;
+  hardwareId?: string; // IMEI ou équivalent
   ipAddress?: string;
-  macAddress?: string;
-  osType: string;
-  osVersion: string;
-  lastMaintenanceDate?: Date;
-  nextMaintenanceDate?: Date;
-  status: 'operational' | 'maintenance' | 'offline' | 'retired';
-  location: string;
-  owner?: string;
+  status: 'in-service' | 'stock';
+  assignedToUser?: string; // ID de l'utilisateur si en service
+  dateInService?: Date; // Date de mise en service
   createdAt: Date;
   updatedAt: Date;
 }
