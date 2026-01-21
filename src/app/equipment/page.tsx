@@ -91,82 +91,72 @@ export default function EquipmentPage() {
     return (
       <div
         key={item.id}
-        className={`group relative overflow-hidden rounded-3xl border border-white/30 bg-white/60 backdrop-blur-xl shadow-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${statusColor.border}`}
+        className="flex items-center gap-4 px-5 py-4 rounded-lg bg-white/60 backdrop-blur-sm border border-slate-200/40 hover:bg-white/80 transition-colors duration-200 group"
       >
-        {/* Glow + sheen */}
-        <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-        <div className="absolute -left-16 top-0 h-full w-32 bg-gradient-to-b from-white/50 to-transparent opacity-30 rotate-6 group-hover:translate-x-10 transition-all duration-500"></div>
+        {/* Icon */}
+        <div className={`flex-shrink-0 h-10 w-10 rounded-lg flex items-center justify-center ${statusColor.bg} ${statusColor.text}`}>
+          <TypeIcon size={18} />
+        </div>
 
-        <div className="relative p-4 h-full flex flex-col gap-4">
-          {/* Header */}
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-4">
-              <div className={`h-10 w-10 rounded-2xl bg-gradient-to-br from-white/80 to-white/40 flex items-center justify-center shadow-inner border border-white/40 ${statusColor.text}`}>
-                <TypeIcon size={16} />
-              </div>
-              <div className="space-y-1">
-                <h3 className="font-bold text-base text-slate-900 line-clamp-2">{item.name || 'Équipement'}</h3>
-                  <p className="text-xs text-slate-500">{getTypeLabel(item.type)}</p>
-              </div>
-            </div>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold shadow-sm ${statusColor.badge}`}>
-              {item.status === 'in-service' ? '✅ En service' : '📦 Stock'}
+        {/* Main info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 mb-1">
+            <h3 className="font-semibold text-sm text-slate-900 truncate">{item.name || 'Équipement'}</h3>
+            <span className={`text-xs font-medium px-2.5 py-0.5 rounded-md whitespace-nowrap ${statusColor.badge}`}>
+              {item.status === 'in-service' ? 'En service' : 'Stock'}
             </span>
           </div>
+          <p className="text-xs text-slate-500">{getTypeLabel(item.type)}</p>
+        </div>
 
-          {/* Key facts pills */}
-          <div className="flex flex-wrap gap-2 text-xs">
-            {item.serialNumber && <span className="px-2.5 py-1 rounded-full bg-white/70 border border-white/50 text-slate-700">SN: {item.serialNumber}</span>}
-            {item.hardwareId && <span className="px-2.5 py-1 rounded-full bg-white/70 border border-white/50 text-slate-700">IMEI: {item.hardwareId}</span>}
-            {item.ipAddress && <span className="px-2.5 py-1 rounded-full bg-white/70 border border-white/50 text-slate-700 font-mono">IP: {item.ipAddress}</span>}
-            {item.assignedToUser && item.status === 'in-service' && (
-              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-semibold">👤 {item.assignedToUser}</span>
-            )}
-          </div>
+        {/* Details row */}
+        <div className="hidden md:flex items-center gap-6 flex-shrink-0 text-xs text-slate-600">
+          {item.serialNumber && (
+            <div className="text-center">
+              <p className="text-slate-400 mb-0.5">SN</p>
+              <p className="font-mono text-slate-700">{item.serialNumber.substring(0, 8)}...</p>
+            </div>
+          )}
+          {item.ipAddress && (
+            <div className="text-center">
+              <p className="text-slate-400 mb-0.5">IP</p>
+              <p className="font-mono text-slate-700">{item.ipAddress}</p>
+            </div>
+          )}
+          {item.assignedToUser && item.status === 'in-service' && (
+            <div className="text-center">
+              <p className="text-slate-400 mb-0.5">Utilisateur</p>
+              <p className="text-slate-700">{item.assignedToUser}</p>
+            </div>
+          )}
+          {item.dateInService && item.status === 'in-service' && (
+            <div className="text-center">
+              <p className="text-slate-400 mb-0.5">En service</p>
+              <p className="text-slate-700">{new Date(item.dateInService).toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' })}</p>
+            </div>
+          )}
+        </div>
 
-          {/* Details grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-            {item.dateInService && item.status === 'in-service' && (
-              <div className="flex items-center gap-2 text-slate-600">
-                <span className="text-xs px-2 py-1 rounded bg-white/60 border border-white/40">📅</span>
-                <div>
-                  <p className="text-xs text-slate-500">Mis en service</p>
-                  <p className="font-semibold text-slate-900">{new Date(item.dateInService).toLocaleDateString('fr-FR')}</p>
-                </div>
-              </div>
-            )}
-            {item.status === 'stock' && (
-              <div className="flex items-center gap-2 text-slate-600">
-                <span className="text-xs px-2 py-1 rounded bg-white/60 border border-white/40">⏳</span>
-                <div>
-                  <p className="text-xs text-slate-500">Disponibilité</p>
-                  <p className="font-semibold text-slate-900">En stock</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center justify-center gap-2 pt-3 border-t border-white/30">
-            <button
-              onClick={() => {
-                setEditingId(item.id);
-                setFormData(item);
-                setShowModal(true);
-              }}
-              className="inline-flex items-center justify-center gap-2 px-3 py-1.5 min-w-[88px] rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-semibold shadow hover:shadow-lg hover:scale-[1.02] transition-all"
-            >
-              <Edit2 size={12} />
-              <span className="hidden sm:inline">Modifier</span>
-            </button>
-            <button
-              onClick={() => deleteEquipment(item.id)}
-              className="inline-flex items-center justify-center gap-2 px-3 py-1.5 min-w-[88px] rounded-xl bg-gradient-to-r from-rose-500 to-red-500 text-white font-semibold shadow hover:shadow-lg hover:scale-[1.02] transition-all"
-            >
-              <Trash2 size={12} />
-              <span className="hidden sm:inline">Supprimer</span>
-            </button>
-          </div>
+        {/* Actions */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={() => {
+              setEditingId(item.id);
+              setFormData(item);
+              setShowModal(true);
+            }}
+            className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+            title="Modifier"
+          >
+            <Edit2 size={16} />
+          </button>
+          <button
+            onClick={() => deleteEquipment(item.id)}
+            className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+            title="Supprimer"
+          >
+            <Trash2 size={16} />
+          </button>
         </div>
       </div>
     );
@@ -371,7 +361,7 @@ export default function EquipmentPage() {
               <h2 className="text-2xl font-bold text-slate-900">✅ Équipements en Service</h2>
               <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-sm font-bold">{equipmentInService.length}</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-2">
               {equipmentInService.map((item) => (
                 <EquipmentCard key={item.id} item={item} />
               ))}
@@ -386,7 +376,7 @@ export default function EquipmentPage() {
               <h2 className="text-2xl font-bold text-slate-900">📦 Matériel Disponible (Stock)</h2>
               <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-bold">{equipmentInStock.length}</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-2">
               {equipmentInStock.map((item) => (
                 <EquipmentCard key={item.id} item={item} />
               ))}
