@@ -7,7 +7,7 @@
   "static/chunks/node_modules_recharts_es6_component_8e12cb58._.js",
   "static/chunks/node_modules_recharts_es6_cartesian_bd0e095f._.js",
   "static/chunks/node_modules_recharts_es6_61f7e6e0._.js",
-  "static/chunks/node_modules_39776b55._.js"
+  "static/chunks/node_modules_363761c3._.js"
 ],
     source: "dynamic"
 });

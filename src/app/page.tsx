@@ -13,7 +13,6 @@ import {
 } from '@/components/ChartComponents';
 import { useDashboardStore } from '@/store/dashboard';
 import { DashboardStats } from '@/types';
-import { TrendingUp, AlertCircle, Zap } from 'lucide-react';
 
 // Générer des données de temps réel
 const generateTimeSeriesData = (hours: number = 24) => {
@@ -98,32 +97,29 @@ export default function Dashboard() {
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Titre */}
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900">Tableau de bord</h1>
-            <p className="text-gray-600 mt-1">Suivi en temps réel de votre infrastructure IT</p>
+            <h1 className="text-3xl font-bold text-slate-900">Tableau de bord</h1>
+            <p className="text-slate-600 text-sm mt-1">Suivi en temps réel de votre infrastructure IT</p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500">Mis à jour en direct</p>
-            <div className="flex items-center justify-end gap-2 mt-1">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-sm font-medium text-green-600">En ligne</span>
-            </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-sm font-medium text-green-700">En ligne</span>
           </div>
         </div>
 
-        {/* KPIs en haut */}
+        {/* KPIs */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
-              title="Équipements opérationnels"
+              title="Équipements"
               value={`${stats.operationalEquipment}/${stats.totalEquipment}`}
               icon="💻"
               color="green"
             />
             <StatCard
-              title="Utilisateurs actifs"
+              title="Utilisateurs"
               value={`${stats.activeUsers}/${stats.totalUsers}`}
               icon="👥"
               color="blue"
@@ -132,11 +128,10 @@ export default function Dashboard() {
               title="Tickets ouverts"
               value={stats.openTickets}
               icon="🎫"
-              trend={-12}
               color="yellow"
             />
             <StatCard
-              title="Alertes critiques"
+              title="Alertes"
               value={stats.criticalTickets}
               icon="⚠️"
               color={stats.criticalTickets > 0 ? 'red' : 'green'}
@@ -144,161 +139,132 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Graphiques principaux */}
+        {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* CPU, Mémoire, Disque */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-900">Métriques système</h2>
-              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Temps réel</span>
-            </div>
+          <div className="bg-white rounded-lg border border-slate-200 p-5">
+            <h2 className="text-base font-bold text-slate-900 mb-4">Métriques système</h2>
             <MetricsLineChart data={timeSeriesData} />
           </div>
 
-          {/* Charge serveur */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-900">Charge moyenne</h2>
-              <TrendingUp className="w-5 h-5 text-blue-500" />
-            </div>
+          <div className="bg-white rounded-lg border border-slate-200 p-5">
+            <h2 className="text-base font-bold text-slate-900 mb-4">Charge serveur</h2>
             <ServerLoadChart data={timeSeriesData} />
           </div>
         </div>
 
-        {/* Graphiques secondaires */}
+        {/* Secondary Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Tickets par jour */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Tickets par jour</h2>
+          <div className="bg-white rounded-lg border border-slate-200 p-5">
+            <h2 className="text-base font-bold text-slate-900 mb-4">Tickets par jour</h2>
             <TicketsBarChart data={ticketsData} />
           </div>
 
-          {/* Statut équipements */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Statut des équipements</h2>
+          <div className="bg-white rounded-lg border border-slate-200 p-5">
+            <h2 className="text-base font-bold text-slate-900 mb-4">Statut équipements</h2>
             <StatusPieChart data={equipmentStatus} />
           </div>
         </div>
 
-        {/* Trafic réseau */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-900">Trafic réseau</h2>
-            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Entrée/Sortie</span>
-          </div>
+        {/* Network Traffic */}
+        <div className="bg-white rounded-lg border border-slate-200 p-5">
+          <h2 className="text-base font-bold text-slate-900 mb-4">Trafic réseau</h2>
           <NetworkTrafficChart data={timeSeriesData} />
         </div>
 
-        {/* Grille d'informations */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Santé des serveurs */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-900">Santé des serveurs</h3>
-              <Zap className="w-5 h-5 text-yellow-500" />
-            </div>
+        {/* Info Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="bg-white rounded-lg border border-slate-200 p-5">
+            <h3 className="font-bold text-slate-900 text-sm mb-4">Santé serveurs</h3>
             {stats && (
-              <>
-                <div className="mb-2">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm text-gray-600">Score global</span>
-                    <span className="font-bold text-2xl text-blue-600">{stats.serverHealthScore}%</span>
-                  </div>
-                  <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-green-400 to-green-600 transition-all duration-500"
-                      style={{ width: `${stats.serverHealthScore}%` }}
-                    />
-                  </div>
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs text-slate-600">Score global</span>
+                  <span className="font-bold text-2xl text-blue-600">{stats.serverHealthScore}%</span>
                 </div>
-              </>
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-green-400 to-green-500"
+                    style={{ width: `${stats.serverHealthScore}%` }}
+                  />
+                </div>
+              </div>
             )}
           </div>
 
-          {/* Utilisation des IPs */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-900">Allocation IPs</h3>
-              <span className="text-2xl">🌐</span>
-            </div>
+          <div className="bg-white rounded-lg border border-slate-200 p-5">
+            <h3 className="font-bold text-slate-900 text-sm mb-4">Allocation IPs</h3>
             {stats && (
-              <>
-                <div className="mb-2">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm text-gray-600">Utilisation</span>
-                    <span className="font-bold text-2xl text-purple-600">{stats.ipUtilization}%</span>
-                  </div>
-                  <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-purple-400 to-purple-600 transition-all duration-500"
-                      style={{ width: `${stats.ipUtilization}%` }}
-                    />
-                  </div>
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-xs text-slate-600">Utilisation</span>
+                  <span className="font-bold text-2xl text-purple-600">{stats.ipUtilization}%</span>
                 </div>
-              </>
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-purple-400 to-purple-500"
+                    style={{ width: `${stats.ipUtilization}%` }}
+                  />
+                </div>
+              </div>
             )}
           </div>
 
-          {/* Alertes actives */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-900">Alertes</h3>
-              <AlertCircle className="w-5 h-5 text-red-500" />
-            </div>
+          <div className="bg-white rounded-lg border border-slate-200 p-5">
+            <h3 className="font-bold text-slate-900 text-sm mb-4">Alertes</h3>
             {stats && (
-              <>
-                <p className="text-4xl font-bold text-red-600 mb-2">{stats.activeAlerts}</p>
-                <p className="text-sm text-gray-600">Alertes actives nécessitant attention</p>
-              </>
+              <div>
+                <p className="text-3xl font-bold text-red-600 mb-1">{stats.activeAlerts}</p>
+                <p className="text-xs text-slate-600">Alertes actives</p>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Serveurs et alertes en bas */}
+        {/* Bottom Grids */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Statut serveurs */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h3 className="font-bold text-gray-900 mb-4">État des serveurs</h3>
-            <div className="space-y-3">
-              {servers.map((server) => (
-                <div key={server.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{server.name}</p>
-                    <p className="text-xs text-gray-500">{server.ipAddress}</p>
+          {/* Servers */}
+          <div className="bg-white rounded-lg border border-slate-200 p-5">
+            <h3 className="font-bold text-slate-900 text-sm mb-4">État des serveurs</h3>
+            <div className="space-y-2">
+              {servers.slice(0, 3).map((server) => (
+                <div key={server.id} className="flex items-center justify-between p-3 bg-slate-50 rounded">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-900 text-sm">{server.name}</p>
+                    <p className="text-xs text-slate-500">{server.ipAddress}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-green-400 to-green-600"
+                        className="h-full bg-green-500"
                         style={{ width: `${server.healthScore}%` }}
                       />
                     </div>
-                    <span className="text-sm font-bold text-gray-900 w-8">{server.healthScore}%</span>
+                    <span className="text-xs font-bold text-slate-700 w-6">{server.healthScore}%</span>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Alertes récentes */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h3 className="font-bold text-gray-900 mb-4">Alertes récentes</h3>
-            <div className="space-y-3">
-              {alerts.slice(0, 4).map((alert) => (
+          {/* Alerts */}
+          <div className="bg-white rounded-lg border border-slate-200 p-5">
+            <h3 className="font-bold text-slate-900 text-sm mb-4">Alertes récentes</h3>
+            <div className="space-y-2">
+              {alerts.slice(0, 3).map((alert) => (
                 <div
                   key={alert.id}
-                  className={`p-3 rounded border-l-4 ${
+                  className={`p-3 rounded text-xs border-l-2 ${
                     alert.type === 'critical'
-                      ? 'bg-red-50 border-red-500'
+                      ? 'bg-red-50 border-l-red-500'
                       : alert.type === 'error'
-                      ? 'bg-red-50 border-red-500'
+                      ? 'bg-orange-50 border-l-orange-500'
                       : alert.type === 'warning'
-                      ? 'bg-yellow-50 border-yellow-500'
-                      : 'bg-blue-50 border-blue-500'
+                      ? 'bg-yellow-50 border-l-yellow-500'
+                      : 'bg-blue-50 border-l-blue-500'
                   }`}
                 >
-                  <p className="font-medium text-gray-900 text-sm">{alert.title}</p>
-                  <p className="text-xs text-gray-600">{alert.message}</p>
+                  <p className="font-medium text-slate-900">{alert.title}</p>
+                  <p className="text-slate-600 mt-0.5">{alert.message}</p>
                 </div>
               ))}
             </div>
