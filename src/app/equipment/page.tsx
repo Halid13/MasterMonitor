@@ -222,14 +222,14 @@ export default function EquipmentPage() {
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="group">
-                    <label className="block text-sm font-semibold text-slate-900 mb-2">Nom de l'équipement *</label>
+                    <label className="block text-sm font-semibold text-slate-900 mb-2">Marque *</label>
                     <input
                       type="text"
                       value={formData.name || ''}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
                       required
-                      placeholder="ex: MacBook Pro de John"
+                      placeholder="ex: Apple, Dell, HP"
                     />
                   </div>
 
@@ -269,17 +269,6 @@ export default function EquipmentPage() {
                       onChange={(e) => setFormData({ ...formData, hardwareId: e.target.value })}
                       className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
                       placeholder="IMEI ou identifiant unique"
-                    />
-                  </div>
-
-                  <div className="group">
-                    <label className="block text-sm font-semibold text-slate-900 mb-2">Adresse IP</label>
-                    <input
-                      type="text"
-                      value={formData.ipAddress || ''}
-                      onChange={(e) => setFormData({ ...formData, ipAddress: e.target.value })}
-                      className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
-                      placeholder="192.168.1.100"
                     />
                   </div>
 
