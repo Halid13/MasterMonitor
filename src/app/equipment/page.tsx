@@ -10,6 +10,7 @@ export default function EquipmentPage() {
   const { equipment, addEquipment, updateEquipment, deleteEquipment } = useDashboardStore();
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<'all' | 'in-service' | 'stock'>('all');
   const [formData, setFormData] = useState<Partial<Equipment>>({
     type: 'laptop',
     status: 'stock',
@@ -199,6 +200,40 @@ export default function EquipmentPage() {
           </button>
         </div>
 
+        {/* Filter Buttons */}
+        <div className="flex gap-3 flex-wrap">
+          <button
+            onClick={() => setFilterStatus('all')}
+            className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+              filterStatus === 'all'
+                ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg scale-105'
+                : 'bg-white/50 backdrop-blur-lg border border-white/30 text-slate-900 hover:bg-white/70'
+            }`}
+          >
+            🔍 Tous les équipements
+          </button>
+          <button
+            onClick={() => setFilterStatus('in-service')}
+            className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+              filterStatus === 'in-service'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg scale-105'
+                : 'bg-white/50 backdrop-blur-lg border border-white/30 text-slate-900 hover:bg-white/70'
+            }`}
+          >
+            ✅ En service
+          </button>
+          <button
+            onClick={() => setFilterStatus('stock')}
+            className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+              filterStatus === 'stock'
+                ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg scale-105'
+                : 'bg-white/50 backdrop-blur-lg border border-white/30 text-slate-900 hover:bg-white/70'
+            }`}
+          >
+            📦 En stock
+          </button>
+        </div>
+
         {/* Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -336,7 +371,7 @@ export default function EquipmentPage() {
         )}
 
         {/* Section Équipements en Service */}
-        {equipmentInService.length > 0 && (
+        {equipmentInService.length > 0 && (filterStatus === 'all' || filterStatus === 'in-service') && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <h2 className="text-2xl font-bold text-slate-900">✅ Équipements en Service</h2>
@@ -351,7 +386,7 @@ export default function EquipmentPage() {
         )}
 
         {/* Section Stock */}
-        {equipmentInStock.length > 0 && (
+        {equipmentInStock.length > 0 && (filterStatus === 'all' || filterStatus === 'stock') && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <h2 className="text-2xl font-bold text-slate-900">📦 Matériel Disponible (Stock)</h2>
