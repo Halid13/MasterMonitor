@@ -21,7 +21,8 @@ export interface Equipment {
   hardwareId?: string; // IMEI ou équivalent
   ipAddress?: string;
   status: 'in-service' | 'stock';
-  assignedToUser?: string; // ID de l'utilisateur si en service
+  assignedToUser?: string; // ID de l'utilisateur si en service (pour laptop, phone, other)
+  departmentService?: string; // Département/Service si en service (pour printer, network)
   dateInService?: Date; // Date de mise en service
   createdAt: Date;
   updatedAt: Date;

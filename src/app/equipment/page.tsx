@@ -306,16 +306,31 @@ export default function EquipmentPage() {
 
                   {formData.status === 'in-service' && (
                     <>
-                      <div className="group">
-                        <label className="block text-xs font-semibold text-slate-900 mb-2">Utilisateur assigné</label>
-                        <input
-                          type="text"
-                          value={formData.assignedToUser || ''}
-                          onChange={(e) => setFormData({ ...formData, assignedToUser: e.target.value })}
-                          className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
-                          placeholder="Nom ou ID de l'utilisateur"
-                        />
-                      </div>
+                      {(formData.type === 'printer' || formData.type === 'network' || formData.type === 'phone' || formData.type === 'laptop') && (
+                        <div className="group">
+                          <label className="block text-xs font-semibold text-slate-900 mb-2">Service/Département</label>
+                          <input
+                            type="text"
+                            value={formData.departmentService || ''}
+                            onChange={(e) => setFormData({ ...formData, departmentService: e.target.value })}
+                            className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                            placeholder="ex: IT, RH, Ventes"
+                          />
+                        </div>
+                      )}
+
+                      {(formData.type === 'laptop' || formData.type === 'phone' || formData.type === 'other') && (
+                        <div className="group">
+                          <label className="block text-xs font-semibold text-slate-900 mb-2">Utilisateur assigné</label>
+                          <input
+                            type="text"
+                            value={formData.assignedToUser || ''}
+                            onChange={(e) => setFormData({ ...formData, assignedToUser: e.target.value })}
+                            className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                            placeholder="Nom ou ID de l'utilisateur"
+                          />
+                        </div>
+                      )}
 
                       <div className="group">
                         <label className="block text-xs font-semibold text-slate-900 mb-2">Date de mise en service</label>
