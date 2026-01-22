@@ -32,6 +32,7 @@ export default function EquipmentPage() {
         ipAddress: formData.ipAddress || '',
         status: formData.status as any,
         assignedToUser: formData.assignedToUser,
+        departmentService: formData.departmentService,
         dateInService: formData.dateInService,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -127,6 +128,12 @@ export default function EquipmentPage() {
             <div className="text-center">
               <p className="text-slate-400 mb-0.5">Utilisateur</p>
               <p className="text-slate-700">{item.assignedToUser}</p>
+            </div>
+          )}
+          {item.departmentService && item.status === 'in-service' && (
+            <div className="text-center">
+              <p className="text-slate-400 mb-0.5">Service</p>
+              <p className="text-slate-700">{item.departmentService}</p>
             </div>
           )}
           {item.dateInService && item.status === 'in-service' && (
