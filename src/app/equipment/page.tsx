@@ -356,10 +356,16 @@ export default function EquipmentPage() {
 
         {/* Section Équipements en Service */}
         {equipmentInService.length > 0 && (filterStatus === 'all' || filterStatus === 'in-service') && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold text-slate-900">✅ Équipements en Service</h2>
-              <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-sm font-bold">{equipmentInService.length}</span>
+          <div className="rounded-2xl bg-gradient-to-br from-emerald-50/80 via-white/60 to-emerald-50/40 backdrop-blur-sm border border-emerald-200/40 p-6 space-y-4">
+            <div className="flex items-center gap-3 pb-4 border-b border-emerald-200/40">
+              <div className="p-2 rounded-lg bg-emerald-100/50">
+                <span className="text-2xl">✅</span>
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-emerald-900">Équipements en Service</h2>
+                <p className="text-xs text-emerald-600/70">Matériel actuellement déployé</p>
+              </div>
+              <span className="px-4 py-2 rounded-lg bg-emerald-100 text-emerald-800 text-sm font-bold">{equipmentInService.length}</span>
             </div>
             <div className="space-y-2">
               {equipmentInService.map((item) => (
@@ -371,10 +377,16 @@ export default function EquipmentPage() {
 
         {/* Section Stock */}
         {equipmentInStock.length > 0 && (filterStatus === 'all' || filterStatus === 'stock') && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold text-slate-900">📦 Matériel Disponible (Stock)</h2>
-              <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-bold">{equipmentInStock.length}</span>
+          <div className="rounded-2xl bg-gradient-to-br from-blue-50/80 via-white/60 to-blue-50/40 backdrop-blur-sm border border-blue-200/40 p-6 space-y-4">
+            <div className="flex items-center gap-3 pb-4 border-b border-blue-200/40">
+              <div className="p-2 rounded-lg bg-blue-100/50">
+                <span className="text-2xl">📦</span>
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-blue-900">Matériel Disponible</h2>
+                <p className="text-xs text-blue-600/70">En attente de déploiement</p>
+              </div>
+              <span className="px-4 py-2 rounded-lg bg-blue-100 text-blue-800 text-sm font-bold">{equipmentInStock.length}</span>
             </div>
             <div className="space-y-2">
               {equipmentInStock.map((item) => (
