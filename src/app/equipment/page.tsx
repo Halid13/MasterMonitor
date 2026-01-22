@@ -4,7 +4,7 @@ import { useState } from 'react';
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { Equipment } from '@/types';
-import { Plus, Trash2, Edit2, X, Laptop, Printer, Smartphone, Wifi, Package, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Laptop, Printer, Smartphone, Wifi, Package, AlertCircle, Download } from 'lucide-react';
 
 export default function EquipmentPage() {
   const { equipment, addEquipment, updateEquipment, deleteEquipment } = useDashboardStore();
@@ -29,7 +29,6 @@ export default function EquipmentPage() {
         type: formData.type as any,
         serialNumber: formData.serialNumber || '',
         hardwareId: formData.hardwareId || '',
-        ipAddress: formData.ipAddress || '',
         status: formData.status as any,
         assignedToUser: formData.assignedToUser,
         departmentService: formData.departmentService,
@@ -85,6 +84,54 @@ export default function EquipmentPage() {
   const equipmentInService = equipment.filter(item => item.status === 'in-service');
   const equipmentInStock = equipment.filter(item => item.status === 'stock');
 
+  // Fonction pour exporter les équipements en service en CSV (1 champ = 1 colonne)
+  const exportToCSV = () => {
+    if (equipmentInService.length === 0) {
+      alert('Aucun équipement en service à exporter');
+      return;
+    }
+
+    const headers = [
+      'Marque',
+      "Type d'équipement",
+      'Numéro de série',
+      'Identifiant matériel (IMEI)',
+      'Statut',
+      'Utilisateur assigné',
+      'Service/Département',
+      'Date de mise en service',
+    ];
+
+    const delimiter = ';'; // compatible Excel FR, une colonne par champ
+    const escapeCell = (cell: string) => `"${(cell || '').replace(/"/g, '""')}"`;
+
+    const rows = equipmentInService.map(item => [
+      item.name || '',
+      getTypeLabel(item.type),
+      item.serialNumber || '',
+      item.hardwareId || '',
+      'En service',
+      item.assignedToUser || '',
+      item.departmentService || '',
+      item.dateInService ? new Date(item.dateInService).toLocaleDateString('fr-FR') : '',
+    ]);
+
+    const csvContent = [
+      headers.map(escapeCell).join(delimiter),
+      ...rows.map(row => row.map(escapeCell).join(delimiter)),
+    ].join('\n');
+
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `equipements_en_service_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const EquipmentCard = ({ item }: { item: Equipment }) => {
     const TypeIcon = getTypeIcon(item.type);
     const statusColor = getStatusColor(item.status);
@@ -116,12 +163,6 @@ export default function EquipmentPage() {
             <div className="text-center">
               <p className="text-slate-400 mb-0.5">SN</p>
               <p className="font-mono text-slate-700">{item.serialNumber.substring(0, 8)}...</p>
-            </div>
-          )}
-          {item.ipAddress && (
-            <div className="text-center">
-              <p className="text-slate-400 mb-0.5">IP</p>
-              <p className="font-mono text-slate-700">{item.ipAddress}</p>
             </div>
           )}
           {item.assignedToUser && item.status === 'in-service' && (
@@ -387,6 +428,14 @@ export default function EquipmentPage() {
                 <h2 className="text-xl font-bold text-emerald-900">Équipements en Service</h2>
                 <p className="text-xs text-emerald-600/70">Matériel actuellement déployé</p>
               </div>
+              <button
+                onClick={exportToCSV}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm rounded-lg transition-colors font-semibold"
+                title="Exporter en CSV"
+              >
+                <Download size={16} />
+                Exporter CSV
+              </button>
               <span className="px-4 py-2 rounded-lg bg-emerald-100 text-emerald-800 text-sm font-bold">{equipmentInService.length}</span>
             </div>
             <div className="space-y-2">
