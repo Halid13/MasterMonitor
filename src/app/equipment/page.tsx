@@ -132,6 +132,48 @@ export default function EquipmentPage() {
     document.body.removeChild(link);
   };
 
+  // Fonction pour exporter le stock en CSV (1 champ = 1 colonne)
+  const exportStockToCSV = () => {
+    if (equipmentInStock.length === 0) {
+      alert('Aucun équipement en stock à exporter');
+      return;
+    }
+
+    const headers = [
+      'Marque',
+      "Type d'équipement",
+      'Numéro de série',
+      'Identifiant matériel (IMEI)',
+      'Statut',
+    ];
+
+    const delimiter = ';';
+    const escapeCell = (cell: string) => `"${(cell || '').replace(/"/g, '""')}"`;
+
+    const rows = equipmentInStock.map(item => [
+      item.name || '',
+      getTypeLabel(item.type),
+      item.serialNumber || '',
+      item.hardwareId || '',
+      'Stock',
+    ]);
+
+    const csvContent = [
+      headers.map(escapeCell).join(delimiter),
+      ...rows.map(row => row.map(escapeCell).join(delimiter)),
+    ].join('\n');
+
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `equipements_stock_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const EquipmentCard = ({ item }: { item: Equipment }) => {
     const TypeIcon = getTypeIcon(item.type);
     const statusColor = getStatusColor(item.status);
@@ -457,6 +499,14 @@ export default function EquipmentPage() {
                 <h2 className="text-xl font-bold text-blue-900">Matériel Disponible</h2>
                 <p className="text-xs text-blue-600/70">En attente de déploiement</p>
               </div>
+              <button
+                onClick={exportStockToCSV}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors font-semibold"
+                title="Exporter en CSV"
+              >
+                <Download size={16} />
+                Exporter CSV
+              </button>
               <span className="px-4 py-2 rounded-lg bg-blue-100 text-blue-800 text-sm font-bold">{equipmentInStock.length}</span>
             </div>
             <div className="space-y-2">
