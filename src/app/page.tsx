@@ -96,16 +96,16 @@ export default function Dashboard() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
+      <div className="space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Tableau de bord</h1>
-            <p className="text-slate-600 text-sm mt-1">Suivi en temps réel de votre infrastructure IT</p>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">Tableau de bord</h1>
+            <p className="text-slate-600 mt-2 text-sm">Suivi en temps réel de votre infrastructure IT</p>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-sm font-medium text-green-700">En ligne</span>
+          <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50/80 backdrop-blur-sm border border-emerald-200/40 rounded-lg">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+            <span className="text-sm font-medium text-emerald-700">En ligne</span>
           </div>
         </div>
 
@@ -141,39 +141,39 @@ export default function Dashboard() {
 
         {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-lg border border-slate-200 p-5">
-            <h2 className="text-base font-bold text-slate-900 mb-4">Métriques système</h2>
+          <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-slate-900 mb-4">Métriques système</h2>
             <MetricsLineChart data={timeSeriesData} />
           </div>
 
-          <div className="bg-white rounded-lg border border-slate-200 p-5">
-            <h2 className="text-base font-bold text-slate-900 mb-4">Charge serveur</h2>
+          <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-slate-900 mb-4">Charge serveur</h2>
             <ServerLoadChart data={timeSeriesData} />
           </div>
         </div>
 
         {/* Secondary Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-lg border border-slate-200 p-5">
-            <h2 className="text-base font-bold text-slate-900 mb-4">Tickets par jour</h2>
+          <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-slate-900 mb-4">Tickets par jour</h2>
             <TicketsBarChart data={ticketsData} />
           </div>
 
-          <div className="bg-white rounded-lg border border-slate-200 p-5">
-            <h2 className="text-base font-bold text-slate-900 mb-4">Statut équipements</h2>
+          <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-slate-900 mb-4">Statut équipements</h2>
             <StatusPieChart data={equipmentStatus} />
           </div>
         </div>
 
         {/* Network Traffic */}
-        <div className="bg-white rounded-lg border border-slate-200 p-5">
-          <h2 className="text-base font-bold text-slate-900 mb-4">Trafic réseau</h2>
+        <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-slate-900 mb-4">Trafic réseau</h2>
           <NetworkTrafficChart data={timeSeriesData} />
         </div>
 
         {/* Info Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="bg-white rounded-lg border border-slate-200 p-5">
+          <div className="rounded-2xl bg-gradient-to-br from-blue-50/80 via-white/60 to-blue-50/40 backdrop-blur-sm border border-blue-200/40 p-6 shadow-sm">
             <h3 className="font-bold text-slate-900 text-sm mb-4">Santé serveurs</h3>
             {stats && (
               <div>
@@ -183,7 +183,7 @@ export default function Dashboard() {
                 </div>
                 <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-green-400 to-green-500"
+                    className="h-full bg-gradient-to-r from-blue-400 to-blue-500"
                     style={{ width: `${stats.serverHealthScore}%` }}
                   />
                 </div>
@@ -191,7 +191,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="bg-white rounded-lg border border-slate-200 p-5">
+          <div className="rounded-2xl bg-gradient-to-br from-purple-50/80 via-white/60 to-purple-50/40 backdrop-blur-sm border border-purple-200/40 p-6 shadow-sm">
             <h3 className="font-bold text-slate-900 text-sm mb-4">Allocation IPs</h3>
             {stats && (
               <div>
@@ -209,7 +209,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="bg-white rounded-lg border border-slate-200 p-5">
+          <div className="rounded-2xl bg-gradient-to-br from-red-50/80 via-white/60 to-red-50/40 backdrop-blur-sm border border-red-200/40 p-6 shadow-sm">
             <h3 className="font-bold text-slate-900 text-sm mb-4">Alertes</h3>
             {stats && (
               <div>
@@ -223,11 +223,11 @@ export default function Dashboard() {
         {/* Bottom Grids */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Servers */}
-          <div className="bg-white rounded-lg border border-slate-200 p-5">
+          <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
             <h3 className="font-bold text-slate-900 text-sm mb-4">État des serveurs</h3>
             <div className="space-y-2">
               {servers.slice(0, 3).map((server) => (
-                <div key={server.id} className="flex items-center justify-between p-3 bg-slate-50 rounded">
+                <div key={server.id} className="flex items-center justify-between p-3 bg-white/40 border border-slate-200/40 rounded-lg hover:bg-white/60 transition-colors">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-slate-900 text-sm">{server.name}</p>
                     <p className="text-xs text-slate-500">{server.ipAddress}</p>
@@ -235,7 +235,7 @@ export default function Dashboard() {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <div className="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-green-500"
+                        className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500"
                         style={{ width: `${server.healthScore}%` }}
                       />
                     </div>
@@ -247,24 +247,24 @@ export default function Dashboard() {
           </div>
 
           {/* Alerts */}
-          <div className="bg-white rounded-lg border border-slate-200 p-5">
+          <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
             <h3 className="font-bold text-slate-900 text-sm mb-4">Alertes récentes</h3>
             <div className="space-y-2">
               {alerts.slice(0, 3).map((alert) => (
                 <div
                   key={alert.id}
-                  className={`p-3 rounded text-xs border-l-2 ${
+                  className={`p-3 rounded-lg text-xs border-l-2 backdrop-blur-sm ${
                     alert.type === 'critical'
-                      ? 'bg-red-50 border-l-red-500'
+                      ? 'bg-red-50/80 border-l-red-500 text-red-900'
                       : alert.type === 'error'
-                      ? 'bg-orange-50 border-l-orange-500'
+                      ? 'bg-orange-50/80 border-l-orange-500 text-orange-900'
                       : alert.type === 'warning'
-                      ? 'bg-yellow-50 border-l-yellow-500'
-                      : 'bg-blue-50 border-l-blue-500'
+                      ? 'bg-yellow-50/80 border-l-yellow-500 text-yellow-900'
+                      : 'bg-blue-50/80 border-l-blue-500 text-blue-900'
                   }`}
                 >
-                  <p className="font-medium text-slate-900">{alert.title}</p>
-                  <p className="text-slate-600 mt-0.5">{alert.message}</p>
+                  <p className="font-medium">{alert.title}</p>
+                  <p className="opacity-80 mt-0.5">{alert.message}</p>
                 </div>
               ))}
             </div>
