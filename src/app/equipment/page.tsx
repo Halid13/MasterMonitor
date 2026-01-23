@@ -5,6 +5,7 @@ import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { Equipment } from '@/types';
 import { Plus, Trash2, Edit2, X, Laptop, Printer, Smartphone, Wifi, Package, AlertCircle, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 export default function EquipmentPage() {
   const { equipment, addEquipment, updateEquipment, deleteEquipment } = useDashboardStore();
@@ -84,8 +85,8 @@ export default function EquipmentPage() {
   const equipmentInService = equipment.filter(item => item.status === 'in-service');
   const equipmentInStock = equipment.filter(item => item.status === 'stock');
 
-  // Fonction pour exporter les équipements en service en CSV (1 champ = 1 colonne)
-  const exportToCSV = () => {
+  // Fonction pour exporter les équipements en service en XLSX (1 champ = 1 colonne)
+  const exportToXLSX = () => {
     if (equipmentInService.length === 0) {
       alert('Aucun équipement en service à exporter');
       return;
@@ -102,38 +103,53 @@ export default function EquipmentPage() {
       'Date de mise en service',
     ];
 
-    const delimiter = ';'; // compatible Excel FR, une colonne par champ
-    const escapeCell = (cell: string) => `"${(cell || '').replace(/"/g, '""')}"`;
-
     const rows = equipmentInService.map(item => [
-      item.name || '',
+      item.name || 'VIDE',
       getTypeLabel(item.type),
-      item.serialNumber || '',
-      item.hardwareId || '',
+      item.serialNumber || 'VIDE',
+      item.hardwareId || 'VIDE',
       'En service',
-      item.assignedToUser || '',
-      item.departmentService || '',
-      item.dateInService ? new Date(item.dateInService).toLocaleDateString('fr-FR') : '',
+      item.assignedToUser || 'VIDE',
+      item.departmentService || 'VIDE',
+      item.dateInService ? new Date(item.dateInService).toLocaleDateString('fr-FR') : 'VIDE',
     ]);
 
-    const csvContent = [
-      headers.map(escapeCell).join(delimiter),
-      ...rows.map(row => row.map(escapeCell).join(delimiter)),
-    ].join('\n');
+    const data = [headers, ...rows];
+    const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `equipements_en_service_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Appliquer le style rouge aux cellules contenant "VIDE"
+    const redFill = { fill: { fgColor: { rgb: 'FFFF0000' } } };
+    const redFont = { font: { color: { rgb: 'FFFF0000' }, bold: true } };
+
+    for (let i = 1; i < data.length; i++) {
+      for (let j = 0; j < data[i].length; j++) {
+        const cellRef = XLSX.utils.encode_cell({ r: i, c: j });
+        if (data[i][j] === 'VIDE') {
+          worksheet[cellRef].fill = redFill.fill;
+          worksheet[cellRef].font = redFont.font;
+        }
+      }
+    }
+
+    // Ajuster la largeur des colonnes
+    worksheet['!cols'] = [
+      { wch: 15 },
+      { wch: 18 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 18 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Équipements');
+    XLSX.writeFile(workbook, `equipements_en_service_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Fonction pour exporter tous les équipements en CSV (1 champ = 1 colonne) avec marquage des champs vides
-  const exportAllToCSV = () => {
+  // Fonction pour exporter tous les équipements en XLSX (1 champ = 1 colonne) avec marquage des champs vides
+  const exportAllToXLSX = () => {
     if (equipment.length === 0) {
       alert('Aucun équipement à exporter');
       return;
@@ -151,40 +167,55 @@ export default function EquipmentPage() {
       'Date de mise en service',
     ];
 
-    const delimiter = ';';
-    const emptyMark = 'VIDE';
-    const escapeCell = (cell: string) => `"${(cell || emptyMark).replace(/"/g, '""')}"`;
-
     const rows = equipment.map(item => [
-      item.name || emptyMark,
-      getTypeLabel(item.type) || emptyMark,
-      item.serialNumber || emptyMark,
-      item.hardwareId || emptyMark,
-      item.ipAddress || emptyMark,
+      item.name || 'VIDE',
+      getTypeLabel(item.type) || 'VIDE',
+      item.serialNumber || 'VIDE',
+      item.hardwareId || 'VIDE',
+      item.ipAddress || 'VIDE',
       item.status === 'in-service' ? 'En service' : 'Stock',
-      item.assignedToUser || emptyMark,
-      item.departmentService || emptyMark,
-      item.dateInService ? new Date(item.dateInService).toLocaleDateString('fr-FR') : emptyMark,
+      item.assignedToUser || 'VIDE',
+      item.departmentService || 'VIDE',
+      item.dateInService ? new Date(item.dateInService).toLocaleDateString('fr-FR') : 'VIDE',
     ]);
 
-    const csvContent = [
-      headers.map(escapeCell).join(delimiter),
-      ...rows.map(row => row.map(escapeCell).join(delimiter)),
-    ].join('\n');
+    const data = [headers, ...rows];
+    const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `equipements_tous_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Appliquer le style rouge aux cellules contenant "VIDE"
+    const redFill = { fill: { fgColor: { rgb: 'FFFF0000' } } };
+    const redFont = { font: { color: { rgb: 'FFFF0000' }, bold: true } };
+
+    for (let i = 1; i < data.length; i++) {
+      for (let j = 0; j < data[i].length; j++) {
+        const cellRef = XLSX.utils.encode_cell({ r: i, c: j });
+        if (data[i][j] === 'VIDE') {
+          worksheet[cellRef].fill = redFill.fill;
+          worksheet[cellRef].font = redFont.font;
+        }
+      }
+    }
+
+    // Ajuster la largeur des colonnes
+    worksheet['!cols'] = [
+      { wch: 15 },
+      { wch: 18 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 18 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Tous les équipements');
+    XLSX.writeFile(workbook, `equipements_tous_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Fonction pour exporter le stock en CSV (1 champ = 1 colonne)
-  const exportStockToCSV = () => {
+  // Fonction pour exporter le stock en XLSX (1 champ = 1 colonne)
+  const exportStockToXLSX = () => {
     if (equipmentInStock.length === 0) {
       alert('Aucun équipement en stock à exporter');
       return;
@@ -198,31 +229,43 @@ export default function EquipmentPage() {
       'Statut',
     ];
 
-    const delimiter = ';';
-    const escapeCell = (cell: string) => `"${(cell || '').replace(/"/g, '""')}"`;
-
     const rows = equipmentInStock.map(item => [
-      item.name || '',
+      item.name || 'VIDE',
       getTypeLabel(item.type),
-      item.serialNumber || '',
-      item.hardwareId || '',
+      item.serialNumber || 'VIDE',
+      item.hardwareId || 'VIDE',
       'Stock',
     ]);
 
-    const csvContent = [
-      headers.map(escapeCell).join(delimiter),
-      ...rows.map(row => row.map(escapeCell).join(delimiter)),
-    ].join('\n');
+    const data = [headers, ...rows];
+    const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `equipements_stock_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Appliquer le style rouge aux cellules contenant "VIDE"
+    const redFill = { fill: { fgColor: { rgb: 'FFFF0000' } } };
+    const redFont = { font: { color: { rgb: 'FFFF0000' }, bold: true } };
+
+    for (let i = 1; i < data.length; i++) {
+      for (let j = 0; j < data[i].length; j++) {
+        const cellRef = XLSX.utils.encode_cell({ r: i, c: j });
+        if (data[i][j] === 'VIDE') {
+          worksheet[cellRef].fill = redFill.fill;
+          worksheet[cellRef].font = redFont.font;
+        }
+      }
+    }
+
+    // Ajuster la largeur des colonnes
+    worksheet['!cols'] = [
+      { wch: 15 },
+      { wch: 18 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 12 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Stock');
+    XLSX.writeFile(workbook, `equipements_stock_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const EquipmentCard = ({ item }: { item: Equipment }) => {
@@ -339,11 +382,11 @@ export default function EquipmentPage() {
           </button>
           {filterStatus === 'all' && (
             <button
-              onClick={exportAllToCSV}
+              onClick={exportAllToXLSX}
               className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm rounded-xl hover:bg-slate-800 transition-colors"
             >
               <Download size={16} />
-              Exporter CSV (Tous)
+              Exporter XLSX (Tous)
             </button>
           )}
           <button
@@ -531,12 +574,12 @@ export default function EquipmentPage() {
                 <p className="text-xs text-emerald-600/70">Matériel actuellement déployé</p>
               </div>
               <button
-                onClick={exportToCSV}
+                onClick={exportToXLSX}
                 className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm rounded-lg transition-colors font-semibold"
-                title="Exporter en CSV"
+                title="Exporter en XLSX"
               >
                 <Download size={16} />
-                Exporter CSV
+                Exporter XLSX
               </button>
               <span className="px-4 py-2 rounded-lg bg-emerald-100 text-emerald-800 text-sm font-bold">{equipmentInService.length}</span>
             </div>
@@ -560,12 +603,12 @@ export default function EquipmentPage() {
                 <p className="text-xs text-blue-600/70">En attente de déploiement</p>
               </div>
               <button
-                onClick={exportStockToCSV}
+                onClick={exportStockToXLSX}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors font-semibold"
-                title="Exporter en CSV"
+                title="Exporter en XLSX"
               >
                 <Download size={16} />
-                Exporter CSV
+                Exporter XLSX
               </button>
               <span className="px-4 py-2 rounded-lg bg-blue-100 text-blue-800 text-sm font-bold">{equipmentInStock.length}</span>
             </div>
