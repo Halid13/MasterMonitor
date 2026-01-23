@@ -132,6 +132,57 @@ export default function EquipmentPage() {
     document.body.removeChild(link);
   };
 
+  // Fonction pour exporter tous les équipements en CSV (1 champ = 1 colonne) avec marquage des champs vides
+  const exportAllToCSV = () => {
+    if (equipment.length === 0) {
+      alert('Aucun équipement à exporter');
+      return;
+    }
+
+    const headers = [
+      'Marque',
+      "Type d'équipement",
+      'Numéro de série',
+      'Identifiant matériel (IMEI)',
+      'Adresse IP',
+      'Statut',
+      'Utilisateur assigné',
+      'Service/Département',
+      'Date de mise en service',
+    ];
+
+    const delimiter = ';';
+    const emptyMark = 'VIDE';
+    const escapeCell = (cell: string) => `"${(cell || emptyMark).replace(/"/g, '""')}"`;
+
+    const rows = equipment.map(item => [
+      item.name || emptyMark,
+      getTypeLabel(item.type) || emptyMark,
+      item.serialNumber || emptyMark,
+      item.hardwareId || emptyMark,
+      item.ipAddress || emptyMark,
+      item.status === 'in-service' ? 'En service' : 'Stock',
+      item.assignedToUser || emptyMark,
+      item.departmentService || emptyMark,
+      item.dateInService ? new Date(item.dateInService).toLocaleDateString('fr-FR') : emptyMark,
+    ]);
+
+    const csvContent = [
+      headers.map(escapeCell).join(delimiter),
+      ...rows.map(row => row.map(escapeCell).join(delimiter)),
+    ].join('\n');
+
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `equipements_tous_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Fonction pour exporter le stock en CSV (1 champ = 1 colonne)
   const exportStockToCSV = () => {
     if (equipmentInStock.length === 0) {
@@ -286,6 +337,15 @@ export default function EquipmentPage() {
           >
             🔍 Tous les équipements
           </button>
+          {filterStatus === 'all' && (
+            <button
+              onClick={exportAllToCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm rounded-xl hover:bg-slate-800 transition-colors"
+            >
+              <Download size={16} />
+              Exporter CSV (Tous)
+            </button>
+          )}
           <button
             onClick={() => setFilterStatus('in-service')}
             className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
