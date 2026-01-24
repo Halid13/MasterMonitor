@@ -411,35 +411,39 @@ export default function UsersPage() {
                           {user.isActive ? 'Actif' : 'Inactif'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 flex gap-2">
-                        <button
-                          onClick={() => {
-                            setEditingId(user.id);
-                            setFormData(user);
-                            const currentLaptop = equipment.find(
-                              (eq) => eq.assignedToUser === user.id && eq.type === 'laptop',
-                            );
-                            const currentPhone = equipment.find(
-                              (eq) => eq.assignedToUser === user.id && eq.type === 'phone',
-                            );
-                            setSelectedLaptopId(currentLaptop?.id || '');
-                            setSelectedPhoneId(currentPhone?.id || '');
-                            setShowModal(true);
-                          }}
-                          className="text-blue-600 hover:text-blue-700"
-                        >
-                          <Edit2 size={18} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            deleteUser(user.id);
-                            handleEquipmentAssignments(user.id); // Unassign all
-                            recordHistory(user.id, 'Suppression du profil utilisateur');
-                          }}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingId(user.id);
+                              setFormData(user);
+                              const currentLaptop = equipment.find(
+                                (eq) => eq.assignedToUser === user.id && eq.type === 'laptop',
+                              );
+                              const currentPhone = equipment.find(
+                                (eq) => eq.assignedToUser === user.id && eq.type === 'phone',
+                              );
+                              setSelectedLaptopId(currentLaptop?.id || '');
+                              setSelectedPhoneId(currentPhone?.id || '');
+                              setShowModal(true);
+                            }}
+                            className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                            title="Modifier"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              deleteUser(user.id);
+                              handleEquipmentAssignments(user.id); // Unassign all
+                              recordHistory(user.id, 'Suppression du profil utilisateur');
+                            }}
+                            className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
