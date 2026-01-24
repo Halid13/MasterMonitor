@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { Equipment } from '@/types';
@@ -8,7 +8,7 @@ import { Plus, Trash2, Edit2, X, Laptop, Printer, Smartphone, Wifi, Package, Ale
 import * as XLSX from 'xlsx';
 
 export default function EquipmentPage() {
-  const { equipment, addEquipment, updateEquipment, deleteEquipment } = useDashboardStore();
+  const { equipment, users, addEquipment, updateEquipment, deleteEquipment } = useDashboardStore();
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'in-service' | 'stock'>('all');
@@ -27,9 +27,10 @@ export default function EquipmentPage() {
       payload.assignedToUser = undefined;
       payload.departmentService = undefined;
       payload.dateInService = undefined;
-    } else if (payload.status === 'in-service' && !payload.dateInService) {
-      // En service sans date fournie : on enregistre la date du jour
-      payload.dateInService = new Date();
+    } else if (payload.status === 'in-service') {
+      const selectedUser = users.find((u) => u.id === payload.assignedToUser);
+      payload.departmentService = payload.departmentService || selectedUser?.department;
+      payload.dateInService = payload.dateInService || new Date();
     }
 
     if (editingId) {
@@ -44,8 +45,8 @@ export default function EquipmentPage() {
         hardwareId: formData.hardwareId || '',
         status: payload.status as any,
         assignedToUser: payload.status === 'in-service' ? payload.assignedToUser : undefined,
-        departmentService: payload.status === 'in-service' ? payload.departmentService : undefined,
-        dateInService: payload.status === 'in-service' ? payload.dateInService || new Date() : undefined,
+        departmentService: payload.status === 'in-service' ? (payload.departmentService || users.find(u => u.id === payload.assignedToUser)?.department) : undefined,
+        dateInService: payload.status === 'in-service' ? (payload.dateInService || new Date()) : undefined,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -283,6 +284,7 @@ export default function EquipmentPage() {
   const EquipmentCard = ({ item }: { item: Equipment }) => {
     const TypeIcon = getTypeIcon(item.type);
     const statusColor = getStatusColor(item.status);
+    const assignedUser = useMemo(() => users.find(u => u.id === item.assignedToUser), [users, item.assignedToUser]);
     
     return (
       <div
@@ -316,7 +318,7 @@ export default function EquipmentPage() {
           {item.assignedToUser && item.status === 'in-service' && (
             <div className="text-center">
               <p className="text-slate-400 mb-0.5">Utilisateur</p>
-              <p className="text-slate-700">{item.assignedToUser}</p>
+              <p className="text-slate-700">{assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : item.assignedToUser}</p>
             </div>
           )}
           {item.departmentService && item.status === 'in-service' && (
@@ -527,13 +529,38 @@ export default function EquipmentPage() {
                       {(formData.type === 'laptop' || formData.type === 'phone' || formData.type === 'other') && (
                         <div className="group">
                           <label className="block text-xs font-semibold text-slate-900 mb-2">Utilisateur assigné</label>
-                          <input
-                            type="text"
+                          <select
                             value={formData.assignedToUser || ''}
-                            onChange={(e) => setFormData({ ...formData, assignedToUser: e.target.value })}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (!val) {
+                                setFormData({
+                                  ...formData,
+                                  assignedToUser: undefined,
+                                  departmentService: undefined,
+                                  dateInService: undefined,
+                                  status: 'stock',
+                                });
+                                return;
+                              }
+                              const u = users.find((us) => us.id === val);
+                              setFormData({
+                                ...formData,
+                                assignedToUser: val,
+                                departmentService: u?.department || formData.departmentService,
+                                dateInService: formData.dateInService || new Date(),
+                                status: 'in-service',
+                              });
+                            }}
                             className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
-                            placeholder="Nom ou ID de l'utilisateur"
-                          />
+                          >
+                            <option value="">— Sélectionner un utilisateur —</option>
+                            {users.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.firstName} {u.lastName} ({u.username})
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       )}
 
