@@ -20,8 +20,20 @@ export default function EquipmentPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    const payload: Partial<Equipment> = { ...formData, updatedAt: new Date() };
+
+    if (payload.status === 'stock') {
+      // En stock : on retire l'assignation et la date de mise en service
+      payload.assignedToUser = undefined;
+      payload.departmentService = undefined;
+      payload.dateInService = undefined;
+    } else if (payload.status === 'in-service' && !payload.dateInService) {
+      // En service sans date fournie : on enregistre la date du jour
+      payload.dateInService = new Date();
+    }
+
     if (editingId) {
-      updateEquipment(editingId, formData);
+      updateEquipment(editingId, payload);
       setEditingId(null);
     } else {
       const newEquipment: Equipment = {
@@ -30,10 +42,10 @@ export default function EquipmentPage() {
         type: formData.type as any,
         serialNumber: formData.serialNumber || '',
         hardwareId: formData.hardwareId || '',
-        status: formData.status as any,
-        assignedToUser: formData.assignedToUser,
-        departmentService: formData.departmentService,
-        dateInService: formData.dateInService,
+        status: payload.status as any,
+        assignedToUser: payload.status === 'in-service' ? payload.assignedToUser : undefined,
+        departmentService: payload.status === 'in-service' ? payload.departmentService : undefined,
+        dateInService: payload.status === 'in-service' ? payload.dateInService || new Date() : undefined,
         createdAt: new Date(),
         updatedAt: new Date(),
       };

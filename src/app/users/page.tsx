@@ -359,103 +359,103 @@ export default function UsersPage() {
           </div>
         )}
 
-        {/* Users Table */}
-        <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/70 to-slate-50/50 backdrop-blur-sm border border-slate-200/60 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-white/70 border-b border-slate-200/60">
-                <tr>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Utilisateur</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Email</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Département</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Équipements</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Rôle</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Statut</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200/60">
-                {users.map((user) => {
-                  const laptopList = userAssignments[user.id]?.laptops || [];
-                  const phoneList = userAssignments[user.id]?.phones || [];
-                  return (
-                    <tr key={user.id} className="hover:bg-white/60 transition-colors">
-                      <td className="px-6 py-4 text-sm font-semibold text-slate-900">
-                        {user.firstName} {user.lastName}
-                        <p className="text-xs text-slate-500">{user.username}</p>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-600">{user.email}</td>
-                      <td className="px-6 py-4 text-sm text-slate-600">{user.department}</td>
-                      <td className="px-6 py-4 text-sm text-slate-700 space-y-1">
-                        {laptopList.length === 0 && phoneList.length === 0 && (
-                          <span className="text-xs text-slate-400">Aucun équipement</span>
-                        )}
-                        {laptopList.map((name) => (
-                          <span key={name} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
-                            <Laptop size={14} /> {name}
-                          </span>
-                        ))}
-                        {phoneList.map((name) => (
-                          <span key={name} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium">
-                            <Phone size={14} /> {name}
-                          </span>
-                        ))}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getRoleColor(user.role)}`}>
-                          {getRoleLabel(user.role)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                          {user.isActive ? 'Actif' : 'Inactif'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => {
-                              setEditingId(user.id);
-                              setFormData(user);
-                              const currentLaptop = equipment.find(
-                                (eq) => eq.assignedToUser === user.id && eq.type === 'laptop',
-                              );
-                              const currentPhone = equipment.find(
-                                (eq) => eq.assignedToUser === user.id && eq.type === 'phone',
-                              );
-                              setSelectedLaptopId(currentLaptop?.id || '');
-                              setSelectedPhoneId(currentPhone?.id || '');
-                              setShowModal(true);
-                            }}
-                            className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                            title="Modifier"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => {
-                              deleteUser(user.id);
-                              handleEquipmentAssignments(user.id); // Unassign all
-                              recordHistory(user.id, 'Suppression du profil utilisateur');
-                            }}
-                            className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-                            title="Supprimer"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        {/* Users List */}
+        <div className="space-y-2">
           {users.length === 0 && (
-            <div className="text-center py-8">
-              <p className="text-slate-500">Aucun utilisateur trouvé</p>
+            <div className="text-center py-16 px-4">
+              <p className="text-xl text-slate-500 font-medium">Aucun utilisateur trouvé</p>
+              <p className="text-slate-400 mt-2">Commencez par en ajouter un!</p>
             </div>
           )}
+          {users.map((user) => {
+            const laptopList = userAssignments[user.id]?.laptops || [];
+            const phoneList = userAssignments[user.id]?.phones || [];
+            return (
+              <div
+                key={user.id}
+                className="flex items-center gap-4 px-5 py-4 rounded-lg bg-white/60 backdrop-blur-sm border border-slate-200/40 hover:bg-white/80 transition-colors duration-200 group"
+              >
+                {/* User Avatar/Icon */}
+                <div className="flex-shrink-0 h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-bold text-lg">
+                  {user.firstName.charAt(0)}{user.lastName.charAt(0)}
+                </div>
+
+                {/* Main Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-1">
+                    <h3 className="font-semibold text-sm text-slate-900">{user.firstName} {user.lastName}</h3>
+                    <span className={`text-xs font-medium px-2.5 py-0.5 rounded-md whitespace-nowrap ${getRoleColor(user.role)}`}>
+                      {getRoleLabel(user.role)}
+                    </span>
+                    <span className={`text-xs font-medium px-2.5 py-0.5 rounded-md whitespace-nowrap ${user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                      {user.isActive ? 'Actif' : 'Inactif'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500">@{user.username} • {user.email}</p>
+                </div>
+
+                {/* Details */}
+                <div className="hidden md:flex items-center gap-6 flex-shrink-0 text-xs">
+                  <div className="text-center">
+                    <p className="text-slate-400 mb-0.5">Département</p>
+                    <p className="text-slate-700 font-medium">{user.department}</p>
+                  </div>
+                  <div className="text-center min-w-[120px]">
+                    <p className="text-slate-400 mb-0.5">Équipements</p>
+                    <div className="flex flex-wrap gap-1 justify-center">
+                      {laptopList.length === 0 && phoneList.length === 0 && (
+                        <span className="text-xs text-slate-400">Aucun</span>
+                      )}
+                      {laptopList.map((name) => (
+                        <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
+                          <Laptop size={12} /> {name}
+                        </span>
+                      ))}
+                      {phoneList.map((name) => (
+                        <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium">
+                          <Phone size={12} /> {name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => {
+                      setEditingId(user.id);
+                      setFormData(user);
+                      const currentLaptop = equipment.find(
+                        (eq) => eq.assignedToUser === user.id && eq.type === 'laptop',
+                      );
+                      const currentPhone = equipment.find(
+                        (eq) => eq.assignedToUser === user.id && eq.type === 'phone',
+                      );
+                      setSelectedLaptopId(currentLaptop?.id || '');
+                      setSelectedPhoneId(currentPhone?.id || '');
+                      setShowModal(true);
+                    }}
+                    className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                    title="Modifier"
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      deleteUser(user.id);
+                      handleEquipmentAssignments(user.id);
+                      recordHistory(user.id, 'Suppression du profil utilisateur');
+                    }}
+                    className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                    title="Supprimer"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Suivi utilisateur */}
