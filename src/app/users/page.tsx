@@ -5,7 +5,7 @@ import MainLayout from '@/components/MainLayout';
 import SelectDropdown from '@/components/SelectDropdown';
 import { useDashboardStore } from '@/store/dashboard';
 import { User } from '@/types';
-import { Plus, Trash2, Edit2, Laptop, Phone, X } from 'lucide-react';
+import { Plus, Trash2, Edit2, Laptop, Phone, X, Info } from 'lucide-react';
 
 type HistoryEntry = {
   id: string;
@@ -24,6 +24,7 @@ export default function UsersPage() {
   const [selectedLaptopId, setSelectedLaptopId] = useState<string>('');
   const [selectedPhoneId, setSelectedPhoneId] = useState<string>('');
   const [histories, setHistories] = useState<Record<string, HistoryEntry[]>>({});
+  const [historyUserId, setHistoryUserId] = useState<string | null>(null);
 
   const availableLaptops = useMemo(
     () => equipment.filter((e) => e.type === 'laptop' && (!e.assignedToUser || e.assignedToUser === editingId)),
@@ -423,6 +424,14 @@ export default function UsersPage() {
                 {/* Actions */}
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
+                    onClick={() => setHistoryUserId(user.id)}
+                    className="p-2 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+                    title="Suivi des changements"
+                    type="button"
+                  >
+                    <Info size={16} />
+                  </button>
+                  <button
                     onClick={() => {
                       setEditingId(user.id);
                       setFormData(user);
@@ -540,6 +549,48 @@ export default function UsersPage() {
           height: 0;
         }
       `}</style>
+      {historyUserId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white/95 backdrop-blur-xl rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto border border-white/20 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Suivi des changements</h3>
+                <p className="text-sm text-slate-500">Dernières actions pour cet utilisateur</p>
+              </div>
+              <button
+                onClick={() => setHistoryUserId(null)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                aria-label="Fermer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="space-y-3">
+              {(histories[historyUserId] || []).length === 0 ? (
+                <p className="text-sm text-slate-500">Aucun changement enregistré.</p>
+              ) : (
+                histories[historyUserId]
+                  .slice()
+                  .reverse()
+                  .map((entry) => (
+                    <div key={entry.id} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
+                      <p className="text-sm text-slate-800">{entry.action}</p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {entry.timestamp.toLocaleString('fr-FR', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 }
