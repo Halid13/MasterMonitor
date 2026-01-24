@@ -549,48 +549,86 @@ export default function UsersPage() {
           height: 0;
         }
       `}</style>
-      {historyUserId && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white/95 backdrop-blur-xl rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto border border-white/20 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">Suivi des changements</h3>
-                <p className="text-sm text-slate-500">Dernières actions pour cet utilisateur</p>
+      {historyUserId && (() => {
+        const user = users.find((u) => u.id === historyUserId);
+        const timeline = histories[historyUserId] || [];
+        const laptopList = userAssignments[historyUserId]?.laptops || [];
+        const phoneList = userAssignments[historyUserId]?.phones || [];
+        return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white/95 backdrop-blur-xl rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto border border-white/20 shadow-2xl space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">{user ? `${user.firstName} ${user.lastName}` : 'Utilisateur'}</h3>
+                  <p className="text-sm text-slate-500">{user?.email || 'Email inconnu'}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {user && (
+                    <span className="text-xs px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-medium">{user.department}</span>
+                  )}
+                  <button
+                    onClick={() => setHistoryUserId(null)}
+                    className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                    aria-label="Fermer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => setHistoryUserId(null)}
-                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                aria-label="Fermer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="space-y-3">
-              {(histories[historyUserId] || []).length === 0 ? (
-                <p className="text-sm text-slate-500">Aucun changement enregistré.</p>
-              ) : (
-                histories[historyUserId]
-                  .slice()
-                  .reverse()
-                  .map((entry) => (
-                    <div key={entry.id} className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                      <p className="text-sm text-slate-800">{entry.action}</p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        {entry.timestamp.toLocaleString('fr-FR', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </p>
-                    </div>
-                  ))
-              )}
+
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Équipements</p>
+                <div className="flex flex-wrap gap-2">
+                  {laptopList.map((name) => (
+                    <span key={name} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
+                      <Laptop size={14} /> {name}
+                    </span>
+                  ))}
+                  {phoneList.map((name) => (
+                    <span key={name} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium">
+                      <Phone size={14} /> {name}
+                    </span>
+                  ))}
+                  {laptopList.length === 0 && phoneList.length === 0 && (
+                    <span className="text-xs text-slate-400">Aucun équipement attribué</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Historique des changements</p>
+                {timeline.length === 0 ? (
+                  <p className="text-xs text-slate-400">Aucun changement enregistré</p>
+                ) : (
+                  <div className="space-y-2">
+                    {timeline
+                      .slice()
+                      .reverse()
+                      .slice(0, 4)
+                      .map((entry) => (
+                        <div key={entry.id} className="flex items-start gap-3">
+                          <div className="mt-1 h-2 w-2 rounded-full bg-blue-400" />
+                          <div>
+                            <p className="text-sm text-slate-800">{entry.action}</p>
+                            <p className="text-xs text-slate-500">
+                              {entry.timestamp.toLocaleString('fr-FR', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </MainLayout>
   );
 }
