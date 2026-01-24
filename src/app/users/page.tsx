@@ -5,7 +5,7 @@ import MainLayout from '@/components/MainLayout';
 import SelectDropdown from '@/components/SelectDropdown';
 import { useDashboardStore } from '@/store/dashboard';
 import { User } from '@/types';
-import { Plus, Trash2, Edit2, Laptop, Phone } from 'lucide-react';
+import { Plus, Trash2, Edit2, Laptop, Phone, X } from 'lucide-react';
 
 type HistoryEntry = {
   id: string;
@@ -157,133 +157,187 @@ export default function UsersPage() {
 
         {/* Modal */}
         {showModal && (
-          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 px-4">
-            <div className="rounded-2xl bg-gradient-to-br from-white via-slate-50 to-white shadow-2xl border border-slate-100 p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-              <h2 className="text-2xl font-bold mb-4 text-slate-900">
-                {editingId ? 'Modifier l\'utilisateur' : 'Ajouter un utilisateur'}
-              </h2>
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white/95 backdrop-blur-xl rounded-2xl p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto hide-scrollbar border border-white/20 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                    {editingId ? '✏️ Modifier l\'utilisateur' : '➕ Ajouter un utilisateur'}
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {editingId ? 'Mettez à jour les informations et les ressources' : 'Créez un nouveau profil et attribuez ses ressources'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowModal(false);
+                    setEditingId(null);
+                    setFormData({ role: 'user', isActive: true });
+                    setSelectedLaptopId('');
+                    setSelectedPhoneId('');
+                  }}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                  aria-label="Fermer le formulaire"
+                >
+                  <X size={18} />
+                </button>
+              </div>
 
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Nom</label>
-                    <input
-                      type="text"
-                      value={formData.lastName || ''}
-                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      required
-                    />
+              <form onSubmit={handleSubmit} className="space-y-6 text-sm">
+                {/* Informations personnelles */}
+                <div className="bg-white/70 border border-white/30 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-blue-500" />
+                    <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-600">Informations personnelles</h3>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="group">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2">Nom *</label>
+                      <input
+                        type="text"
+                        value={formData.lastName || ''}
+                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                        placeholder="Dupont"
+                        required
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Prénom</label>
-                    <input
-                      type="text"
-                      value={formData.firstName || ''}
-                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      required
-                    />
-                  </div>
+                    <div className="group">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2">Prénom *</label>
+                      <input
+                        type="text"
+                        value={formData.firstName || ''}
+                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                        placeholder="Jean"
+                        required
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Email professionnel</label>
-                    <input
-                      type="email"
-                      value={formData.email || ''}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      required
-                    />
-                  </div>
+                    <div className="group sm:col-span-2">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2">Email professionnel *</label>
+                      <input
+                        type="email"
+                        value={formData.email || ''}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                        placeholder="jean.dupont@company.com"
+                        required
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Nom d'utilisateur</label>
-                    <input
-                      type="text"
-                      value={formData.username || ''}
-                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      required
-                    />
-                  </div>
+                    <div className="group">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2">Nom d'utilisateur *</label>
+                      <input
+                        type="text"
+                        value={formData.username || ''}
+                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                        placeholder="jdupont"
+                        required
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Département</label>
-                    <input
-                      type="text"
-                      value={formData.department || ''}
-                      onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Rôle</label>
-                    <SelectDropdown
-                      value={formData.role || ''}
-                      onChange={(val) => setFormData({ ...formData, role: val as any })}
-                      options={[
-                        { value: 'user', label: 'Utilisateur' },
-                        { value: 'technician', label: 'Technicien' },
-                        { value: 'manager', label: 'Manager' },
-                        { value: 'admin', label: 'Administrateur' },
-                      ]}
-                      placeholder="Sélectionner un rôle"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-2 col-span-1 md:col-span-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.isActive ?? true}
-                      onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                      className="w-4 h-4 rounded border-slate-300"
-                    />
-                    <span className="text-sm font-medium text-slate-700">Utilisateur actif</span>
+                    <div className="group">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2">Département *</label>
+                      <input
+                        type="text"
+                        value={formData.department || ''}
+                        onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                        placeholder="IT / RH / Finance..."
+                        required
+                      />
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-2">
-                      <Laptop size={16} /> PC (Laptop)
-                    </label>
-                    <SelectDropdown
-                      value={selectedLaptopId}
-                      onChange={(val) => setSelectedLaptopId(val)}
-                      options={[
-                        { value: '', label: 'Aucun' },
-                        ...availableLaptops.map((eq) => ({ value: eq.id, label: `${eq.name} (${eq.serialNumber})` })),
-                      ]}
-                      placeholder="Sélectionner un laptop"
-                    />
+                {/* Paramètres d'accès */}
+                <div className="bg-white/70 border border-white/30 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-purple-500" />
+                    <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-600">Paramètres d'accès</h3>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="group">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2">Rôle *</label>
+                      <SelectDropdown
+                        value={formData.role || ''}
+                        onChange={(val) => setFormData({ ...formData, role: val as any })}
+                        options={[
+                          { value: 'user', label: 'Utilisateur' },
+                          { value: 'technician', label: 'Technicien' },
+                          { value: 'manager', label: 'Manager' },
+                          { value: 'admin', label: 'Administrateur' },
+                        ]}
+                        placeholder="Sélectionner un rôle"
+                        className="px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 group-hover:bg-white/70"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-2">
-                      <Phone size={16} /> Téléphone IP
-                    </label>
-                    <SelectDropdown
-                      value={selectedPhoneId}
-                      onChange={(val) => setSelectedPhoneId(val)}
-                      options={[
-                        { value: '', label: 'Aucun' },
-                        ...availablePhones.map((eq) => ({ value: eq.id, label: `${eq.name} (${eq.serialNumber})` })),
-                      ]}
-                      placeholder="Sélectionner un téléphone"
-                    />
+                    <div className="flex items-end">
+                      <label className="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/30 bg-white/50 hover:bg-white/70 transition-all cursor-pointer w-full">
+                        <input
+                          type="checkbox"
+                          checked={formData.isActive ?? true}
+                          onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                          className="w-4 h-4 rounded border-slate-300 cursor-pointer"
+                        />
+                        <span className="text-sm font-semibold text-slate-700">Utilisateur actif</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex gap-3 pt-2">
+                {/* Attribution de ressources */}
+                <div className="bg-white/70 border border-white/30 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                    <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-600">Ressources</h3>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="group">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2 flex items-center gap-2">
+                        <Laptop size={16} className="text-blue-500" /> Laptop
+                      </label>
+                      <SelectDropdown
+                        value={selectedLaptopId}
+                        onChange={(val) => setSelectedLaptopId(val)}
+                        options={[
+                          { value: '', label: 'Aucun' },
+                          ...availableLaptops.map((eq) => ({ value: eq.id, label: `${eq.name} (${eq.serialNumber})` })),
+                        ]}
+                        placeholder="Sélectionner un laptop"
+                        className="px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 group-hover:bg-white/70"
+                      />
+                    </div>
+
+                    <div className="group">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2 flex items-center gap-2">
+                        <Phone size={16} className="text-cyan-500" /> Téléphone IP
+                      </label>
+                      <SelectDropdown
+                        value={selectedPhoneId}
+                        onChange={(val) => setSelectedPhoneId(val)}
+                        options={[
+                          { value: '', label: 'Aucun' },
+                          ...availablePhones.map((eq) => ({ value: eq.id, label: `${eq.name} (${eq.serialNumber})` })),
+                        ]}
+                        placeholder="Sélectionner un téléphone"
+                        className="px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 group-hover:bg-white/70"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Boutons d'action */}
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
+                    className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
                   >
-                    {editingId ? 'Mettre à jour' : 'Ajouter'}
+                    {editingId ? 'Mettre à jour l\'utilisateur' : 'Créer l\'utilisateur'}
                   </button>
                   <button
                     type="button"
@@ -294,7 +348,7 @@ export default function UsersPage() {
                       setSelectedLaptopId('');
                       setSelectedPhoneId('');
                     }}
-                    className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-all"
+                    className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl font-semibold hover:bg-slate-200 transition-all"
                   >
                     Annuler
                   </button>
@@ -472,6 +526,15 @@ export default function UsersPage() {
           })}
         </div>
       </div>
+      <style jsx global>{`
+        .hide-scrollbar {
+          scrollbar-width: none;
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+        }
+      `}</style>
     </MainLayout>
   );
 }
