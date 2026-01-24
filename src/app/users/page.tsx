@@ -467,78 +467,7 @@ export default function UsersPage() {
           })}
         </div>
 
-        {/* Suivi utilisateur */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {users.map((user) => {
-            const timeline = histories[user.id] || [];
-            const laptopList = userAssignments[user.id]?.laptops || [];
-            const phoneList = userAssignments[user.id]?.phones || [];
-            return (
-              <div
-                key={user.id}
-                className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/70 to-slate-50/50 backdrop-blur-sm border border-slate-200/60 shadow-sm p-5 space-y-4"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-900">{user.firstName} {user.lastName}</h3>
-                    <p className="text-sm text-slate-500">{user.email}</p>
-                  </div>
-                  <span className="text-xs px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-medium">{user.department}</span>
-                </div>
 
-                <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Équipements</p>
-                  <div className="flex flex-wrap gap-2">
-                    {laptopList.map((name) => (
-                      <span key={name} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
-                        <Laptop size={14} /> {name}
-                      </span>
-                    ))}
-                    {phoneList.map((name) => (
-                      <span key={name} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium">
-                        <Phone size={14} /> {name}
-                      </span>
-                    ))}
-                    {laptopList.length === 0 && phoneList.length === 0 && (
-                      <span className="text-xs text-slate-400">Aucun équipement attribué</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Historique des changements</p>
-                  {timeline.length === 0 ? (
-                    <p className="text-xs text-slate-400">Aucun changement enregistré</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {timeline
-                        .slice()
-                        .reverse()
-                        .slice(0, 4)
-                        .map((entry) => (
-                          <div key={entry.id} className="flex items-start gap-3">
-                            <div className="mt-1 h-2 w-2 rounded-full bg-blue-400" />
-                            <div>
-                              <p className="text-sm text-slate-800">{entry.action}</p>
-                              <p className="text-xs text-slate-500">
-                                {entry.timestamp.toLocaleString('fr-FR', {
-                                  day: '2-digit',
-                                  month: 'short',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
       </div>
       <style jsx global>{`
         .hide-scrollbar {
