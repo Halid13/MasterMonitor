@@ -61,6 +61,7 @@ export default function UsersPage() {
   };
 
   const handleEquipmentAssignments = (userId: string, laptopId?: string, phoneId?: string) => {
+    const user = users.find(u => u.id === userId);
     const owned = equipment.filter(
       (eq) => eq.assignedToUser === userId && (eq.type === 'laptop' || eq.type === 'phone'),
     );
@@ -69,17 +70,17 @@ export default function UsersPage() {
     owned.forEach((eq) => {
       const keep = (eq.type === 'laptop' && eq.id === laptopId) || (eq.type === 'phone' && eq.id === phoneId);
       if (!keep) {
-        updateEquipment(eq.id, { assignedToUser: undefined, status: 'stock', updatedAt: new Date() });
+        updateEquipment(eq.id, { assignedToUser: undefined, departmentService: undefined, dateInService: undefined, status: 'stock', updatedAt: new Date() });
         recordHistory(userId, `Désassignation de ${eq.name}`);
       }
     });
 
     if (laptopId) {
-      updateEquipment(laptopId, { assignedToUser: userId, status: 'in-service', updatedAt: new Date() });
+      updateEquipment(laptopId, { assignedToUser: userId, departmentService: user?.department, dateInService: new Date(), status: 'in-service', updatedAt: new Date() });
       recordHistory(userId, 'Attribution d’un laptop');
     }
     if (phoneId) {
-      updateEquipment(phoneId, { assignedToUser: userId, status: 'in-service', updatedAt: new Date() });
+      updateEquipment(phoneId, { assignedToUser: userId, departmentService: user?.department, dateInService: new Date(), status: 'in-service', updatedAt: new Date() });
       recordHistory(userId, 'Attribution d’un téléphone IP');
     }
   };
