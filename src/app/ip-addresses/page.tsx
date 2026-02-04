@@ -328,7 +328,7 @@ export default function IPAddressesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">Gestion des sous-réseaux</h1>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">Gestion des sous-réseaux</h1>
             <p className="text-slate-600 mt-2">Créez des sous-réseaux à partir d’un réseau principal et suivez l’utilisation des IP</p>
           </div>
           <button

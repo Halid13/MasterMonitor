@@ -145,7 +145,7 @@ export default function UsersPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">Gestion des utilisateurs</h1>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">Gestion des utilisateurs</h1>
             <p className="text-slate-600 mt-2">Créer, attribuer des ressources et suivre les changements</p>
           </div>
           <button
