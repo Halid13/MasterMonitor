@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { Subnet } from '@/types';
-import { Plus, Trash2, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, X } from 'lucide-react';
 
 type SubnetForm = {
   name: string;
@@ -328,15 +328,15 @@ export default function IPAddressesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Gestion des sous-réseaux</h1>
-            <p className="text-gray-600 mt-2">Créez des sous-réseaux à partir d’un réseau principal et suivez l’utilisation des IP</p>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">Gestion des sous-réseaux</h1>
+            <p className="text-slate-600 mt-2">Créez des sous-réseaux à partir d’un réseau principal et suivez l’utilisation des IP</p>
           </div>
           <button
             onClick={() => {
               setFormError(null);
               setShowModal(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
           >
             <Plus size={20} />
             Ajouter un sous-réseau
@@ -345,12 +345,37 @@ export default function IPAddressesPage() {
 
         {/* Modal */}
         {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-              <h2 className="text-2xl font-bold mb-2">
-                {editingId ? 'Modifier le sous-réseau' : 'Ajouter un sous-réseau'}
-              </h2>
-              <p className="text-sm text-gray-500 mb-4">Le calcul est automatique et respecte les règles de sous-réseautage</p>
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white/95 backdrop-blur-xl rounded-2xl p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto hide-scrollbar border border-white/20 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                    {editingId ? '✏️ Modifier le sous-réseau' : '➕ Ajouter un sous-réseau'}
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">Le calcul est automatique et respecte les règles de sous-réseautage</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowModal(false);
+                    setEditingId(null);
+                    setFormError(null);
+                    setFormData({
+                      name: '',
+                      mainNetworkCidr: '',
+                      calculationMode: 'hosts',
+                      hostCount: 50,
+                      subnetCount: 4,
+                      subnetIndexMode: 'auto',
+                      subnetIndex: 1,
+                      allocation: '',
+                    });
+                  }}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                  aria-label="Fermer le formulaire"
+                >
+                  <X size={18} />
+                </button>
+              </div>
 
               {formError && (
                 <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -358,137 +383,162 @@ export default function IPAddressesPage() {
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nom du sous-réseau</label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Ex: Bureau Paris"
-                    />
+              <form onSubmit={handleSubmit} className="space-y-6 text-sm">
+                <div className="bg-white/70 border border-white/30 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-blue-500" />
+                    <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-600">Informations générales</h3>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Réseau principal (CIDR)</label>
-                    <input
-                      type="text"
-                      value={formData.mainNetworkCidr}
-                      onChange={(e) => setFormData({ ...formData, mainNetworkCidr: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="192.168.0.0/16"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Méthode de calcul</label>
-                    <div className="flex items-center gap-4">
-                      <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="radio"
-                          checked={formData.calculationMode === 'hosts'}
-                          onChange={() => setFormData({ ...formData, calculationMode: 'hosts' })}
-                        />
-                        Par nombre d’hôtes
-                      </label>
-                      <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="radio"
-                          checked={formData.calculationMode === 'subnets'}
-                          onChange={() => setFormData({ ...formData, calculationMode: 'subnets' })}
-                        />
-                        Par nombre de sous-réseaux
-                      </label>
-                    </div>
-                  </div>
-
-                  {formData.calculationMode === 'hosts' ? (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Nombre d’hôtes requis</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="group">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2">Nom du sous-réseau</label>
                       <input
-                        type="number"
-                        min={1}
-                        value={formData.hostCount}
-                        onChange={(e) => setFormData({ ...formData, hostCount: Number(e.target.value) })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="50"
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                        placeholder="Ex: Bureau Paris"
+                      />
+                    </div>
+
+                    <div className="group">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2">Réseau principal (CIDR) *</label>
+                      <input
+                        type="text"
+                        value={formData.mainNetworkCidr}
+                        onChange={(e) => setFormData({ ...formData, mainNetworkCidr: e.target.value })}
+                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                        placeholder="192.168.0.0/16"
                         required
                       />
                     </div>
-                  ) : (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de sous-réseaux souhaité</label>
-                      <input
-                        type="number"
-                        min={1}
-                        value={formData.subnetCount}
-                        onChange={(e) => setFormData({ ...formData, subnetCount: Number(e.target.value) })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="4"
-                        required
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Choix du sous-réseau</label>
-                    <div className="flex items-center gap-4">
-                      <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="radio"
-                          checked={formData.subnetIndexMode === 'auto'}
-                          onChange={() => setFormData({ ...formData, subnetIndexMode: 'auto' })}
-                        />
-                        Auto (prochain disponible)
-                      </label>
-                      <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="radio"
-                          checked={formData.subnetIndexMode === 'index'}
-                          onChange={() => setFormData({ ...formData, subnetIndexMode: 'index' })}
-                        />
-                        Index précis
-                      </label>
-                    </div>
-                  </div>
-
-                  {formData.subnetIndexMode === 'index' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Index du sous-réseau</label>
-                      <input
-                        type="number"
-                        min={1}
-                        value={formData.subnetIndex}
-                        onChange={(e) => setFormData({ ...formData, subnetIndex: Number(e.target.value) })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="1"
-                        required
-                      />
-                      {calculation.totalSubnets && (
-                        <p className="mt-1 text-xs text-gray-500">Disponible: 1 → {calculation.totalSubnets}</p>
-                      )}
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Département / Service</label>
-                    <input
-                      type="text"
-                      value={formData.allocation}
-                      onChange={(e) => setFormData({ ...formData, allocation: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Ex : IT, Marketing"
-                      required
-                    />
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4">
-                  <h3 className="text-sm font-semibold text-blue-900 mb-3">Calcul automatique</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-700">
+                <div className="bg-white/70 border border-white/30 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                    <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-600">Paramètres de calcul</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="group">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2">Méthode de calcul</label>
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2 text-xs text-slate-700">
+                          <input
+                            type="radio"
+                            checked={formData.calculationMode === 'hosts'}
+                            onChange={() => setFormData({ ...formData, calculationMode: 'hosts' })}
+                          />
+                          Par nombre d’hôtes
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700">
+                          <input
+                            type="radio"
+                            checked={formData.calculationMode === 'subnets'}
+                            onChange={() => setFormData({ ...formData, calculationMode: 'subnets' })}
+                          />
+                          Par nombre de sous-réseaux
+                        </label>
+                      </div>
+                    </div>
+
+                    {formData.calculationMode === 'hosts' ? (
+                      <div className="group">
+                        <label className="block text-xs font-semibold text-slate-900 mb-2">Nombre d’hôtes requis *</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={formData.hostCount}
+                          onChange={(e) => setFormData({ ...formData, hostCount: Number(e.target.value) })}
+                          className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                          placeholder="50"
+                          required
+                        />
+                      </div>
+                    ) : (
+                      <div className="group">
+                        <label className="block text-xs font-semibold text-slate-900 mb-2">Nombre de sous-réseaux souhaité *</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={formData.subnetCount}
+                          onChange={(e) => setFormData({ ...formData, subnetCount: Number(e.target.value) })}
+                          className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                          placeholder="4"
+                          required
+                        />
+                      </div>
+                    )}
+
+                    <div className="group">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2">Choix du sous-réseau</label>
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2 text-xs text-slate-700">
+                          <input
+                            type="radio"
+                            checked={formData.subnetIndexMode === 'auto'}
+                            onChange={() => setFormData({ ...formData, subnetIndexMode: 'auto' })}
+                          />
+                          Auto (prochain disponible)
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700">
+                          <input
+                            type="radio"
+                            checked={formData.subnetIndexMode === 'index'}
+                            onChange={() => setFormData({ ...formData, subnetIndexMode: 'index' })}
+                          />
+                          Index précis
+                        </label>
+                      </div>
+                    </div>
+
+                    {formData.subnetIndexMode === 'index' && (
+                      <div className="group">
+                        <label className="block text-xs font-semibold text-slate-900 mb-2">Index du sous-réseau *</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={formData.subnetIndex}
+                          onChange={(e) => setFormData({ ...formData, subnetIndex: Number(e.target.value) })}
+                          className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                          placeholder="1"
+                          required
+                        />
+                        {calculation.totalSubnets && (
+                          <p className="mt-2 text-xs text-slate-500">Disponible: 1 → {calculation.totalSubnets}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-white/70 border border-white/30 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-purple-500" />
+                    <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-600">Attribution</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="group">
+                      <label className="block text-xs font-semibold text-slate-900 mb-2">Département / Service *</label>
+                      <input
+                        type="text"
+                        value={formData.allocation}
+                        onChange={(e) => setFormData({ ...formData, allocation: e.target.value })}
+                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                        placeholder="Ex : IT, Marketing"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50/70 border border-blue-100 rounded-2xl p-5 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-blue-500" />
+                    <h3 className="text-xs uppercase tracking-wide font-semibold text-blue-800">Calcul automatique</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
                     <div>
                       <span className="font-medium">Masque :</span> {calculation.netmask || '—'}
                     </div>
@@ -521,7 +571,7 @@ export default function IPAddressesPage() {
                 <div className="flex gap-3 pt-2">
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
                   >
                     {editingId ? 'Mettre à jour' : 'Ajouter'}
                   </button>
@@ -542,7 +592,7 @@ export default function IPAddressesPage() {
                         allocation: '',
                       });
                     }}
-                    className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                    className="flex-1 px-4 py-2 bg-slate-200 text-slate-700 rounded-xl hover:bg-slate-300 transition-all"
                   >
                     Annuler
                   </button>
@@ -553,20 +603,20 @@ export default function IPAddressesPage() {
         )}
 
         {/* Subnets Table */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="bg-white/80 backdrop-blur border border-white/40 rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-slate-50/80 border-b border-white/60">
                 <tr>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Nom</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Réseau principal</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Sous-réseau</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Masque</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Plage utilisable</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">IP utilisables</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Utilisation</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Attribution</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Actions</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Nom</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Réseau principal</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Sous-réseau</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Masque</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Plage utilisable</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">IP utilisables</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Utilisation</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Attribution</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
