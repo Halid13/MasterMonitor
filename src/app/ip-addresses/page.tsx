@@ -14,8 +14,7 @@ type SubnetForm = {
   subnetCount: number;
   subnetIndexMode: 'auto' | 'index';
   subnetIndex: number;
-  department: string;
-  service: string;
+  allocation: string;
 };
 
 type SubnetCalculation = {
@@ -225,8 +224,7 @@ export default function IPAddressesPage() {
     subnetCount: 4,
     subnetIndexMode: 'auto',
     subnetIndex: 1,
-    department: '',
-    service: '',
+    allocation: '',
   });
 
   const calculation = useMemo(
@@ -295,8 +293,7 @@ export default function IPAddressesPage() {
       rangeStart: calculation.rangeStart as string,
       rangeEnd: calculation.rangeEnd as string,
       usableHosts: calculation.usableHosts as number,
-      department: formData.department.trim(),
-      service: formData.service.trim(),
+      allocation: formData.allocation.trim(),
       updatedAt: new Date(),
     };
 
@@ -321,8 +318,7 @@ export default function IPAddressesPage() {
       subnetCount: 4,
       subnetIndexMode: 'auto',
       subnetIndex: 1,
-      department: '',
-      service: '',
+      allocation: '',
     });
     setShowModal(false);
   };
@@ -478,25 +474,13 @@ export default function IPAddressesPage() {
                   )}
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Département</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Département / Service</label>
                     <input
                       type="text"
-                      value={formData.department}
-                      onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                      value={formData.allocation}
+                      onChange={(e) => setFormData({ ...formData, allocation: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Informatique"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Service</label>
-                    <input
-                      type="text"
-                      value={formData.service}
-                      onChange={(e) => setFormData({ ...formData, service: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Support"
+                      placeholder="Ex : IT, Marketing"
                       required
                     />
                   </div>
@@ -555,8 +539,7 @@ export default function IPAddressesPage() {
                         subnetCount: 4,
                         subnetIndexMode: 'auto',
                         subnetIndex: 1,
-                        department: '',
-                        service: '',
+                        allocation: '',
                       });
                     }}
                     className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
@@ -615,8 +598,7 @@ export default function IPAddressesPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
-                        <div className="font-medium text-gray-800">{subnet.department}</div>
-                        <div className="text-xs text-gray-500">{subnet.service}</div>
+                        <div className="font-medium text-gray-800">{subnet.allocation}</div>
                       </td>
                       <td className="px-6 py-4 flex gap-2">
                         <button
@@ -640,8 +622,7 @@ export default function IPAddressesPage() {
                               subnetCount: totalSubnets,
                               subnetIndexMode: 'index',
                               subnetIndex: derivedIndex,
-                              department: subnet.department,
-                              service: subnet.service,
+                              allocation: subnet.allocation,
                             });
                             setShowModal(true);
                           }}

@@ -24,8 +24,7 @@ export interface Subnet {
   rangeStart: string;
   rangeEnd: string;
   usableHosts: number;
-  department: string;
-  service: string;
+  allocation: string;
   createdAt: Date;
   updatedAt: Date;
 }
