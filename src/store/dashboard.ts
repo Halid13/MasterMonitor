@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import { Equipment, User, Ticket, ServerStatus, Alert, IPAddress } from '@/types';
+import { Equipment, User, Ticket, ServerStatus, Alert, IPAddress, Subnet } from '@/types';
 
 interface DashboardStore {
   // Equipment
@@ -42,6 +42,13 @@ interface DashboardStore {
   addIPAddress: (ip: IPAddress) => void;
   updateIPAddress: (id: string, ip: Partial<IPAddress>) => void;
   deleteIPAddress: (id: string) => void;
+
+  // Subnets
+  subnets: Subnet[];
+  setSubnets: (subnets: Subnet[]) => void;
+  addSubnet: (subnet: Subnet) => void;
+  updateSubnet: (id: string, subnet: Partial<Subnet>) => void;
+  deleteSubnet: (id: string) => void;
 
   // Filter and Search
   searchQuery: string;
@@ -122,6 +129,18 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
     })),
   deleteIPAddress: (id) =>
     set((state) => ({ ipAddresses: state.ipAddresses.filter((i) => i.id !== id) })),
+
+  // Subnets
+  subnets: [],
+  setSubnets: (subnets) => set({ subnets }),
+  addSubnet: (subnet) =>
+    set((state) => ({ subnets: [...state.subnets, subnet] })),
+  updateSubnet: (id, subnet) =>
+    set((state) => ({
+      subnets: state.subnets.map((s) => (s.id === id ? { ...s, ...subnet } : s)),
+    })),
+  deleteSubnet: (id) =>
+    set((state) => ({ subnets: state.subnets.filter((s) => s.id !== id) })),
 
   // Filter and Search
   searchQuery: '',

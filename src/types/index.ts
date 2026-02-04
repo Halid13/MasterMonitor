@@ -12,6 +12,24 @@ export interface IPAddress {
   updatedAt: Date;
 }
 
+// Types pour les sous-réseaux
+export interface Subnet {
+  id: string;
+  name: string;
+  mainNetworkCidr: string;
+  subnetCidr: string;
+  networkAddress: string;
+  prefix: number;
+  netmask: string;
+  rangeStart: string;
+  rangeEnd: string;
+  usableHosts: number;
+  department: string;
+  service: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // Types pour les équipements informatiques
 export interface Equipment {
   id: string;
