@@ -650,7 +650,7 @@ export default function IPAddressesPage() {
                       <td className="px-6 py-4 text-sm text-gray-600">
                         <div className="font-medium text-gray-800">{subnet.allocation}</div>
                       </td>
-                      <td className="px-6 py-4 flex gap-2">
+                      <td className="px-6 py-4 flex gap-2 justify-center items-center">
                         <button
                           onClick={() => {
                             setEditingId(subnet.id);
@@ -676,15 +676,17 @@ export default function IPAddressesPage() {
                             });
                             setShowModal(true);
                           }}
-                          className="text-blue-600 hover:text-blue-700"
+                          className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                          title="Modifier"
                         >
-                          <Edit2 size={18} />
+                          <Edit2 size={16} />
                         </button>
                         <button
                           onClick={() => deleteSubnet(subnet.id)}
-                          className="text-red-600 hover:text-red-700"
+                          className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                          title="Supprimer"
                         >
-                          <Trash2 size={18} />
+                          <Trash2 size={16} />
                         </button>
                       </td>
                     </tr>
