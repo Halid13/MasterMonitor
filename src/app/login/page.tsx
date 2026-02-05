@@ -11,7 +11,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -22,10 +22,25 @@ export default function LoginPage() {
 
     setLoading(true);
 
-    // Auth factice : on crée un cookie côté client pour débloquer l'accès
-    document.cookie = 'mm_auth=1; path=/; max-age=86400';
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: email, password }),
+      });
 
-    router.push('/dashboard');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        setError(data?.error || 'Connexion refusée.');
+        setLoading(false);
+        return;
+      }
+
+      router.push('/dashboard');
+    } catch {
+      setError('Erreur réseau.');
+      setLoading(false);
+    }
   };
 
   return (
