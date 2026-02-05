@@ -103,7 +103,7 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-6 text-[11px] text-slate-500 flex items-center justify-between">
-            <span>Connexion chiffrée • 256-bit</span>
+            <span>Connexion chiffrée</span>
             <span className="text-indigo-600">Support IT interne</span>
           </div>
           <style jsx>{`
