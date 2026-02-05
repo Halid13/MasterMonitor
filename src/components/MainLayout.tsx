@@ -15,7 +15,7 @@ export const MainLayout = ({ children }: LayoutProps) => {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
   const menuItems = [
-    { href: '/', label: 'Tableau de bord', icon: Home, color: 'from-blue-500 to-cyan-500' },
+    { href: '/dashboard', label: 'Tableau de bord', icon: Home, color: 'from-blue-500 to-cyan-500' },
     { href: '/equipment', label: 'Équipements', icon: Cpu, color: 'from-purple-500 to-pink-500' },
     { href: '/users', label: 'Utilisateurs', icon: Users, color: 'from-emerald-500 to-teal-500' },
     { href: '/ip-addresses', label: 'Sous-réseaux', icon: Globe, color: 'from-orange-500 to-red-500' },

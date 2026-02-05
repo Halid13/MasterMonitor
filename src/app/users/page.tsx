@@ -124,7 +124,7 @@ export default function UsersPage() {
       case 'manager':
         return 'bg-orange-100 text-orange-800';
       case 'technician':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-sky-100 text-sky-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -145,12 +145,12 @@ export default function UsersPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">Gestion des utilisateurs</h1>
+            <h1 className="text-3xl font-bold text-teal-600">Gestion des utilisateurs</h1>
             <p className="text-slate-600 mt-2">Créer, attribuer des ressources et suivre les changements</p>
           </div>
           <button
             onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
+            className="flex items-center gap-2 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
           >
             <Plus size={20} />
             Ajouter un utilisateur
@@ -163,7 +163,7 @@ export default function UsersPage() {
             <div className="bg-white/95 backdrop-blur-xl rounded-2xl p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto hide-scrollbar border border-white/20 shadow-2xl">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  <h2 className="text-3xl font-bold text-teal-600">
                     {editingId ? '✏️ Modifier l\'utilisateur' : '➕ Ajouter un utilisateur'}
                   </h2>
                   <p className="text-sm text-slate-500 mt-1">
@@ -189,7 +189,7 @@ export default function UsersPage() {
                 {/* Informations personnelles */}
                 <div className="bg-white/70 border border-white/30 rounded-2xl p-5 space-y-4">
                   <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full bg-blue-500" />
+                    <div className="h-2 w-2 rounded-full bg-teal-400" />
                     <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-600">Informations personnelles</h3>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -199,7 +199,7 @@ export default function UsersPage() {
                         type="text"
                         value={formData.lastName || ''}
                         onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-300 transition-all group-hover:bg-white/70"
                         placeholder="Dupont"
                         required
                       />
@@ -211,7 +211,7 @@ export default function UsersPage() {
                         type="text"
                         value={formData.firstName || ''}
                         onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-300 transition-all group-hover:bg-white/70"
                         placeholder="Jean"
                         required
                       />
@@ -223,7 +223,7 @@ export default function UsersPage() {
                         type="email"
                         value={formData.email || ''}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-300 transition-all group-hover:bg-white/70"
                         placeholder="jean.dupont@company.com"
                         required
                       />
@@ -235,7 +235,7 @@ export default function UsersPage() {
                         type="text"
                         value={formData.username || ''}
                         onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-300 transition-all group-hover:bg-white/70"
                         placeholder="jdupont"
                         required
                       />
@@ -258,7 +258,7 @@ export default function UsersPage() {
                 {/* Paramètres d'accès */}
                 <div className="bg-white/70 border border-white/30 rounded-2xl p-5 space-y-4">
                   <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full bg-purple-500" />
+                    <div className="h-2 w-2 rounded-full bg-sky-400" />
                     <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-600">Paramètres d'accès</h3>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -274,7 +274,7 @@ export default function UsersPage() {
                           { value: 'admin', label: 'Administrateur' },
                         ]}
                         placeholder="Sélectionner un rôle"
-                        className="px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 group-hover:bg-white/70"
+                        className="px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-300 group-hover:bg-white/70"
                       />
                     </div>
 
@@ -295,13 +295,13 @@ export default function UsersPage() {
                 {/* Attribution de ressources */}
                 <div className="bg-white/70 border border-white/30 rounded-2xl p-5 space-y-4">
                   <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                    <div className="h-2 w-2 rounded-full bg-teal-400" />
                     <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-600">Ressources</h3>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="group">
                       <label className="block text-xs font-semibold text-slate-900 mb-2 flex items-center gap-2">
-                        <Laptop size={16} className="text-blue-500" /> Laptop
+                        <Laptop size={16} className="text-teal-500" /> Laptop
                       </label>
                       <SelectDropdown
                         value={selectedLaptopId}
@@ -311,13 +311,13 @@ export default function UsersPage() {
                           ...availableLaptops.map((eq) => ({ value: eq.id, label: `${eq.name} (${eq.serialNumber})` })),
                         ]}
                         placeholder="Sélectionner un laptop"
-                        className="px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 group-hover:bg-white/70"
+                        className="px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-300 group-hover:bg-white/70"
                       />
                     </div>
 
                     <div className="group">
                       <label className="block text-xs font-semibold text-slate-900 mb-2 flex items-center gap-2">
-                        <Phone size={16} className="text-cyan-500" /> Téléphone IP
+                        <Phone size={16} className="text-sky-500" /> Téléphone IP
                       </label>
                       <SelectDropdown
                         value={selectedPhoneId}
@@ -327,7 +327,7 @@ export default function UsersPage() {
                           ...availablePhones.map((eq) => ({ value: eq.id, label: `${eq.name} (${eq.serialNumber})` })),
                         ]}
                         placeholder="Sélectionner un téléphone"
-                        className="px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 group-hover:bg-white/70"
+                        className="px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-300 group-hover:bg-white/70"
                       />
                     </div>
                   </div>
@@ -337,7 +337,7 @@ export default function UsersPage() {
                 <div className="flex flex-col sm:flex-row gap-3 pt-2">
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+                    className="flex-1 px-4 py-3 bg-teal-500 hover:bg-teal-600 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all"
                   >
                     {editingId ? 'Mettre à jour l\'utilisateur' : 'Créer l\'utilisateur'}
                   </button>
@@ -377,7 +377,7 @@ export default function UsersPage() {
                 className="flex items-center gap-4 px-5 py-4 rounded-lg bg-white/60 backdrop-blur-sm border border-slate-200/40 hover:bg-white/80 transition-colors duration-200 group"
               >
                 {/* User Avatar/Icon */}
-                <div className="flex-shrink-0 h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-bold text-lg">
+                <div className="flex-shrink-0 h-12 w-12 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold text-lg">
                   {user.firstName.charAt(0)}{user.lastName.charAt(0)}
                 </div>
 
@@ -408,12 +408,12 @@ export default function UsersPage() {
                         <span className="text-xs text-slate-400">Aucun</span>
                       )}
                       {laptopList.map((name) => (
-                        <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
+                        <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-xs font-medium">
                           <Laptop size={12} /> {name}
                         </span>
                       ))}
                       {phoneList.map((name) => (
-                        <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium">
+                        <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-xs font-medium">
                           <Phone size={12} /> {name}
                         </span>
                       ))}
@@ -445,7 +445,7 @@ export default function UsersPage() {
                       setSelectedPhoneId(currentPhone?.id || '');
                       setShowModal(true);
                     }}
-                    className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                    className="p-2 rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors"
                     title="Modifier"
                   >
                     <Edit2 size={16} />
@@ -493,7 +493,7 @@ export default function UsersPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {user && (
-                    <span className="text-xs px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-medium">{user.department}</span>
+                    <span className="text-xs px-3 py-1 rounded-full bg-teal-50 text-teal-700 font-medium">{user.department}</span>
                   )}
                   <button
                     onClick={() => setHistoryUserId(null)}
@@ -509,12 +509,12 @@ export default function UsersPage() {
                 <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Équipements</p>
                 <div className="flex flex-wrap gap-2">
                   {laptopList.map((name) => (
-                    <span key={name} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
+                    <span key={name} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 text-teal-700 text-xs font-medium">
                       <Laptop size={14} /> {name}
                     </span>
                   ))}
                   {phoneList.map((name) => (
-                    <span key={name} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium">
+                    <span key={name} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-medium">
                       <Phone size={14} /> {name}
                     </span>
                   ))}
