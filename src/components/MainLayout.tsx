@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Menu, X, Bell, LogOut, Settings, Search, Home, Zap, Users, Globe, Cpu, Ticket } from 'lucide-react';
 
@@ -15,6 +15,17 @@ export const MainLayout = ({ children }: LayoutProps) => {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [adminName, setAdminName] = useState<string>('Administrateur');
+
+  useEffect(() => {
+    const cookie = document.cookie
+      .split('; ')
+      .find((row) => row.startsWith('mm_user='));
+    if (cookie) {
+      const value = decodeURIComponent(cookie.split('=')[1] || '');
+      if (value) setAdminName(value);
+    }
+  }, []);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -160,7 +171,7 @@ export const MainLayout = ({ children }: LayoutProps) => {
             {/* Profile */}
             <div className="flex items-center gap-3 pl-4 border-l border-white/20 group cursor-pointer">
               <div className="text-right">
-                <p className="text-sm font-bold text-slate-900">Admin</p>
+                <p className="text-sm font-bold text-slate-900">{adminName}</p>
                 <p className="text-xs text-slate-500">Administrateur</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold text-sm transform group-hover:scale-110 group-hover:rotate-12 transition-transform duration-300 shadow-lg">
