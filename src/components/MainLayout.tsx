@@ -13,6 +13,19 @@ export const MainLayout = ({ children }: LayoutProps) => {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      setIsLoggingOut(false);
+      setShowLogoutConfirm(false);
+      router.push('/login');
+    }
+  };
 
   const menuItems = [
     { href: '/dashboard', label: 'Tableau de bord', icon: Home, color: 'from-blue-500 to-cyan-500' },
@@ -103,7 +116,10 @@ export const MainLayout = ({ children }: LayoutProps) => {
             <Settings size={18} className="flex-shrink-0 group-hover:rotate-90 transition-transform duration-500" />
             {sidebarOpen && <span className="text-sm font-medium">Paramètres</span>}
           </button>
-          <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-rose-600 hover:bg-rose-500/20 transition-all duration-300 group hover:scale-105">
+          <button
+            onClick={() => setShowLogoutConfirm(true)}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-rose-600 hover:bg-rose-500/20 transition-all duration-300 group hover:scale-105"
+          >
             <LogOut size={18} className="flex-shrink-0 group-hover:-translate-x-1 transition-transform duration-300" />
             {sidebarOpen && <span className="text-sm font-medium">Déconnexion</span>}
           </button>
@@ -175,7 +191,53 @@ export const MainLayout = ({ children }: LayoutProps) => {
         .animation-delay-2000 {
           animation-delay: 2s;
         }
+        .logout-pop {
+          animation: logoutPop 220ms ease-out;
+        }
+        @keyframes logoutPop {
+          0% { transform: scale(0.96) translateY(8px); opacity: 0; }
+          100% { transform: scale(1) translateY(0); opacity: 1; }
+        }
       `}</style>
+
+      {showLogoutConfirm && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div
+            className="logout-pop w-full max-w-sm rounded-2xl bg-white/90 border border-white/30 shadow-2xl p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="h-10 w-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                <LogOut size={18} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Confirmer la déconnexion</p>
+                <p className="text-xs text-slate-500">Voulez-vous vraiment vous déconnecter ?</p>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 px-3 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={isLoggingOut}
+                className="flex-1 px-3 py-2 rounded-xl bg-rose-500 text-white text-xs font-semibold hover:bg-rose-600 transition-colors disabled:opacity-70"
+              >
+                {isLoggingOut ? 'Déconnexion…' : 'Déconnecter'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
