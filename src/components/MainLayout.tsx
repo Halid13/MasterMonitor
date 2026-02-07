@@ -23,7 +23,10 @@ export const MainLayout = ({ children }: LayoutProps) => {
       .find((row) => row.startsWith('mm_user='));
     if (cookie) {
       const value = decodeURIComponent(cookie.split('=')[1] || '');
-      if (value) setAdminName(value);
+      if (value) {
+        const trimmed = value.includes('@') ? value.split('@')[0] : value;
+        setAdminName(trimmed);
+      }
     }
   }, []);
 
@@ -123,7 +126,10 @@ export const MainLayout = ({ children }: LayoutProps) => {
 
         {/* Sidebar Footer */}
         <div className="px-4 py-4 space-y-2">
-          <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-700 hover:bg-white/40 transition-all duration-300 group hover:scale-105">
+          <button
+            onClick={() => router.push('/settings')}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-700 hover:bg-white/40 transition-all duration-300 group hover:scale-105"
+          >
             <Settings size={18} className="flex-shrink-0 group-hover:rotate-90 transition-transform duration-500" />
             {sidebarOpen && <span className="text-sm font-medium">Paramètres</span>}
           </button>
