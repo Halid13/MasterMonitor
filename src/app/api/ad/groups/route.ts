@@ -8,15 +8,15 @@ const {
   LDAP_BIND_PASSWORD,
 } = process.env;
 
-const bindAsync = (client: ldap.Client, dn: string, password: string) =>
+const bindAsync = (client: any, dn: string, password: string) =>
   new Promise<void>((resolve, reject) => {
     const dnStr = String(dn || '');
     const pwdStr = String(password || '');
     if (!dnStr || !pwdStr) return reject(new Error('EMPTY_BIND'));
-    client.bind(dnStr, pwdStr, (err) => (err ? reject(err) : resolve()));
+    client.bind(dnStr, pwdStr, (err: any) => (err ? reject(err) : resolve()));
   });
 
-const unbindSafe = (client: ldap.Client) => {
+const unbindSafe = (client: any) => {
   try {
     client.unbind();
   } catch {
@@ -56,11 +56,44 @@ export async function GET() {
     }> = [];
 
     await new Promise<void>((resolve, reject) => {
-      client.search(LDAP_BASE_DN, opts, (err, res) => {
+      client.search(LDAP_BASE_DN, opts, (err: any, res: any) => {
         if (err) return reject(err);
 
-        res.on('searchEntry', (entry) => {
-          const obj = entry.object || {};
+        res.on('searchEntry', (entry: any) => {
+          const buildObject = () => {
+            const mapped: Record<string, any> = {};
+
+            const applyAttrs = (attrs: any[], valueKey: 'vals' | 'values') => {
+              attrs.forEach((attr: any) => {
+                if (!attr?.type) return;
+                const vals = attr[valueKey];
+                mapped[attr.type] = Array.isArray(vals) && vals.length === 1
+                  ? vals[0]
+                  : (vals ?? []);
+              });
+            };
+
+            if (Array.isArray(entry?.attributes)) {
+              applyAttrs(entry.attributes, 'vals');
+            }
+
+            if (Array.isArray(entry?.object?.attributes)) {
+              applyAttrs(entry.object.attributes, 'values');
+            }
+
+            if (entry?.pojo && Object.keys(entry.pojo).length > 0) {
+              Object.assign(mapped, entry.pojo);
+            }
+
+            if (entry?.object && Object.keys(entry.object).length > 0) {
+              Object.assign(mapped, entry.object);
+            }
+
+            if (entry?.dn) mapped.distinguishedName = String(entry.dn);
+            return mapped;
+          };
+
+          const obj = buildObject();
           const member = Array.isArray(obj.member) ? obj.member : (obj.member ? [obj.member] : []);
           const dn = String(obj.distinguishedName || '');
           const cn = String(obj.cn || cnFromDn(dn) || '');
@@ -74,7 +107,7 @@ export async function GET() {
           });
         });
 
-        res.on('error', (e) => reject(e));
+        res.on('error', (e: any) => reject(e));
         res.on('end', () => resolve());
       });
     });
