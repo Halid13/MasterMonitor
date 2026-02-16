@@ -427,11 +427,13 @@ export default function ServersPage() {
                             style={{ width: `${server.healthScore}%` }}
                           />
                         </div>
+                        <p className="mt-2 text-[11px] text-slate-500">Synthèse basée sur CPU, RAM, disque.</p>
                       </div>
                       <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
                         <p className="text-xs text-slate-500">Uptime</p>
                         <p className="text-2xl font-semibold text-slate-900">{formatUptime(server.metrics.uptime)}</p>
                         <p className="text-xs text-slate-500 mt-1">{server.metrics.processCount} processus</p>
+                        <p className="mt-1 text-[11px] text-slate-500">Temps depuis le dernier redémarrage.</p>
                       </div>
                     </div>
 
@@ -443,6 +445,7 @@ export default function ServersPage() {
                           <span className={`h-2 w-2 rounded-full ${statusDot(cpuStatus as any)}`} />
                           {cpuStatus}
                         </div>
+                        <p className="mt-2 text-[11px] text-slate-500">Charge processeur instantanée.</p>
                       </div>
                       <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
                         <p className="text-xs text-slate-500">RAM</p>
@@ -451,6 +454,7 @@ export default function ServersPage() {
                           <span className={`h-2 w-2 rounded-full ${statusDot(ramStatus as any)}`} />
                           {ramStatus}
                         </div>
+                        <p className="mt-2 text-[11px] text-slate-500">Mémoire utilisée sur le total.</p>
                       </div>
                       <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
                         <p className="text-xs text-slate-500">Disque</p>
@@ -459,11 +463,13 @@ export default function ServersPage() {
                           <span className={`h-2 w-2 rounded-full ${statusDot(diskStatus as any)}`} />
                           {diskStatus}
                         </div>
+                        <p className="mt-2 text-[11px] text-slate-500">Occupation du stockage principal.</p>
                       </div>
                       <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
                         <p className="text-xs text-slate-500">Réseau</p>
                         <p className="text-sm font-semibold text-slate-900">⬇ {formatThroughput(server.metrics.networkIn)}</p>
                         <p className="text-sm font-semibold text-slate-900">⬆ {formatThroughput(server.metrics.networkOut)}</p>
+                        <p className="mt-2 text-[11px] text-slate-500">Débit entrant et sortant.</p>
                       </div>
                     </div>
 
@@ -474,10 +480,12 @@ export default function ServersPage() {
                           <span className={`h-2 w-2 rounded-full ${statusDot(serviceStatus as any)}`} />
                           {serviceStatus}
                         </div>
+                        <p className="mt-2 text-[11px] text-slate-500">Basé sur services actifs/arrêtés.</p>
                       </div>
                       <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
                         <p className="text-slate-500">Dernière vérif.</p>
                         <p className="text-sm font-semibold text-slate-900">{new Date(server.lastHealthCheck).toLocaleString('fr-FR')}</p>
+                        <p className="mt-2 text-[11px] text-slate-500">Horodatage du dernier contrôle.</p>
                       </div>
                       <div className="col-span-2 rounded-2xl border border-slate-100 bg-white/70 p-4">
                         <p className="text-slate-500">Historique incidents</p>
