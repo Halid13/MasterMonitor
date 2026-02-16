@@ -1,9 +1,13 @@
 'use client';
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
+import { Plus, X } from 'lucide-react';
+import { useState } from 'react';
 
 export default function ServersPage() {
-  const { servers, alerts } = useDashboardStore();
+  const { servers, alerts, addServer } = useDashboardStore();
+  const [showModal, setShowModal] = useState(false);
+  const [formData, setFormData] = useState({ name: '', ipAddress: '' });
 
   const averageHealth = servers.length > 0
     ? Math.round(servers.reduce((sum, s) => sum + s.healthScore, 0) / servers.length)
@@ -90,13 +94,109 @@ export default function ServersPage() {
     return `${value.toFixed(0)} o/s`;
   };
 
+  const handleAddServer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name.trim() || !formData.ipAddress.trim()) return;
+
+    addServer({
+      id: Date.now().toString(),
+      name: formData.name.trim(),
+      ipAddress: formData.ipAddress.trim(),
+      status: 'online',
+      healthScore: 100,
+      metrics: {
+        id: `${Date.now()}-metrics`,
+        serverId: Date.now().toString(),
+        cpuUsage: 0,
+        memoryUsage: 0,
+        diskUsage: 0,
+        networkIn: 0,
+        networkOut: 0,
+        processCount: 0,
+        uptime: 0,
+        timestamp: new Date(),
+      },
+      lastHealthCheck: new Date(),
+      services: [],
+    });
+
+    setFormData({ name: '', ipAddress: '' });
+    setShowModal(false);
+  };
+
   return (
     <MainLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Supervision des serveurs</h1>
-          <p className="text-gray-600 mt-2">État et métriques de tous vos serveurs</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Supervision des serveurs</h1>
+            <p className="text-gray-600 mt-2">État et métriques de tous vos serveurs</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition"
+          >
+            <Plus size={18} /> Ajouter un serveur
+          </button>
         </div>
+
+        {showModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md border border-gray-200 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-gray-900">Ajouter un serveur</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="p-2 rounded-md hover:bg-gray-100"
+                  aria-label="Fermer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <form onSubmit={handleAddServer} className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Nom du serveur</label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="SRV-01"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Adresse IP</label>
+                  <input
+                    type="text"
+                    value={formData.ipAddress}
+                    onChange={(e) => setFormData({ ...formData, ipAddress: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="192.168.1.10"
+                    required
+                  />
+                </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="submit"
+                    className="flex-1 rounded-md bg-blue-600 text-white py-2 text-sm font-semibold hover:bg-blue-700"
+                  >
+                    Ajouter
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="flex-1 rounded-md bg-gray-100 text-gray-700 py-2 text-sm font-semibold hover:bg-gray-200"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
