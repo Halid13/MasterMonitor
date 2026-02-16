@@ -213,19 +213,60 @@ export default function Dashboard() {
         {/* Info Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="rounded-2xl bg-gradient-to-br from-blue-50/80 via-white/60 to-blue-50/40 backdrop-blur-sm border border-blue-200/40 p-6 shadow-sm">
-            <h3 className="font-bold text-slate-900 text-sm mb-4">Santé serveurs</h3>
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="font-bold text-slate-900 text-sm">Santé serveurs</h3>
+              <div className="group relative">
+                <button className="text-slate-400 hover:text-slate-600 text-xs">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                <div className="hidden group-hover:block absolute right-0 top-6 w-72 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-lg z-10">
+                  <p className="font-semibold mb-2">Calcul de la santé globale :</p>
+                  <ul className="space-y-1">
+                    <li>• <span className="text-blue-300">CPU (35%)</span> : Utilisation processeur</li>
+                    <li>• <span className="text-blue-300">RAM (35%)</span> : Utilisation mémoire</li>
+                    <li>• <span className="text-blue-300">Disque (20%)</span> : Espace disque utilisé</li>
+                    <li>• <span className="text-blue-300">Charge (10%)</span> : Load average</li>
+                  </ul>
+                  <div className="mt-2 pt-2 border-t border-slate-600">
+                    <p className="text-emerald-300">✓ 80-100% : Normal</p>
+                    <p className="text-yellow-300">⚠ 60-79% : Attention</p>
+                    <p className="text-red-300">✗ 0-59% : Critique</p>
+                  </div>
+                </div>
+              </div>
+            </div>
             {stats && (
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-xs text-slate-600">Score global</span>
-                  <span className="font-bold text-2xl text-blue-600">{healthScore}%</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-2xl text-blue-600">{healthScore}%</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      healthScore >= 80 ? 'bg-emerald-100 text-emerald-700' :
+                      healthScore >= 60 ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {healthScore >= 80 ? 'Optimal' : healthScore >= 60 ? 'Attention' : 'Critique'}
+                    </span>
+                  </div>
                 </div>
                 <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-blue-400 to-blue-500"
+                    className={`h-full ${
+                      healthScore >= 80 ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' :
+                      healthScore >= 60 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' :
+                      'bg-gradient-to-r from-red-400 to-red-500'
+                    }`}
                     style={{ width: `${healthScore}%` }}
                   />
                 </div>
+                <p className="text-xs text-slate-500 mt-2">
+                  {healthScore >= 80 ? 'Tous les systèmes fonctionnent normalement' :
+                   healthScore >= 60 ? 'Surveillance recommandée, ressources limitées' :
+                   'Intervention requise, performances dégradées'}
+                </p>
               </div>
             )}
           </div>

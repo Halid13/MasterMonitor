@@ -344,6 +344,35 @@ export default function ServersPage() {
           </div>
         )}
 
+        {/* Information sur les seuils */}
+        <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-slate-900 mb-2">Critères de surveillance et seuils d'alerte</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div>
+                  <p className="font-medium text-slate-700 mb-1">CPU & RAM</p>
+                  <p className="text-slate-600">• <span className="text-yellow-600 font-medium">Attention</span> : ≥70% (CPU) / ≥75% (RAM)</p>
+                  <p className="text-slate-600">• <span className="text-red-600 font-medium">Critique</span> : ≥85% (CPU) / ≥90% (RAM)</p>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-700 mb-1">Disque</p>
+                  <p className="text-slate-600">• <span className="text-yellow-600 font-medium">Attention</span> : ≥80%</p>
+                  <p className="text-slate-600">• <span className="text-red-600 font-medium">Critique</span> : ≥90%</p>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-700 mb-1">Services</p>
+                  <p className="text-slate-600">• <span className="text-yellow-600 font-medium">Attention</span> : Service en warning</p>
+                  <p className="text-slate-600">• <span className="text-red-600 font-medium">Critique</span> : Service arrêté</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -368,14 +397,7 @@ export default function ServersPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-2">
-            <h3 className="text-sm font-semibold text-gray-700">Analyse rapide</h3>
-            <div className="text-xs text-gray-500">Seuils: CPU ≥ 70% (attention) ≥ 85% (critique)</div>
-            <div className="text-xs text-gray-500">RAM ≥ 75% (attention) ≥ 90% (critique)</div>
-            <div className="text-xs text-gray-500">Disque ≥ 80% (attention) ≥ 90% (critique)</div>
-            <div className="text-xs text-gray-500">Services arrêtés → critique</div>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <p className="text-sm text-gray-600 mb-2">Disque moyen</p>
             <p className="text-3xl font-bold text-amber-600">{averageDisk}%</p>
@@ -387,18 +409,18 @@ export default function ServersPage() {
             <p className="text-lg font-bold text-purple-600">⬆ {formatThroughput(averageNetOut)}</p>
             <p className="text-xs text-gray-500 mt-2">Uptime moyen: {formatUptime(averageUptime)}</p>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <p className="text-sm text-gray-600 mb-2">Services surveillés</p>
-            <p className="text-3xl font-bold text-slate-700">{totalServices}</p>
-            <p className="text-xs text-gray-500 mt-2">Avertissements: {servicesWarning} • Arrêtés: {servicesDown}</p>
-          </div>
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <p className="text-sm text-gray-600 mb-2">Incidents</p>
             <p className="text-3xl font-bold text-rose-600">{incidentCount}</p>
             <p className="text-xs text-gray-500 mt-2">Critiques: {criticalIncidents}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <p className="text-sm text-gray-600 mb-2">Services surveillés</p>
+            <p className="text-3xl font-bold text-slate-700">{totalServices}</p>
+            <p className="text-xs text-gray-500 mt-2">Avertissements: {servicesWarning} • Arrêtés: {servicesDown}</p>
           </div>
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <p className="text-sm text-gray-600 mb-2">Dernier contrôle</p>
