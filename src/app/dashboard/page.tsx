@@ -14,25 +14,6 @@ import {
 import { useDashboardStore } from '@/store/dashboard';
 import { DashboardStats } from '@/types';
 
-// Générer des données de temps réel
-const generateTimeSeriesData = (hours: number = 24) => {
-  const data = [];
-  const now = new Date();
-  for (let i = hours; i >= 0; i--) {
-    const time = new Date(now.getTime() - i * 3600000);
-    data.push({
-      time: time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-      cpu: Math.random() * 100,
-      memory: Math.random() * 100,
-      disk: Math.random() * 100,
-      load: Math.random() * 100,
-      incoming: Math.random() * 1000,
-      outgoing: Math.random() * 1000,
-    });
-  }
-  return data;
-};
-
 const generateTicketsData = () => [
   { name: 'Lun', open: 12, inProgress: 8, closed: 15 },
   { name: 'Mar', open: 10, inProgress: 12, closed: 18 },
@@ -59,6 +40,8 @@ export default function Dashboard() {
   const { alerts, servers } = useDashboardStore();
 
   useEffect(() => {
+    let isMounted = true;
+
     // Données de démonstration
     const mockStats: DashboardStats = {
       totalEquipment: 156,
@@ -74,11 +57,42 @@ export default function Dashboard() {
       activeAlerts: 5,
     };
 
+    const pushMetricPoint = (metric: any) => {
+      const now = new Date();
+      const point = {
+        time: now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        cpu: metric?.cpu ?? 0,
+        memory: metric?.memory ?? 0,
+        disk: metric?.disk ?? 0,
+        load: metric?.load ?? 0,
+        incoming: metric?.network?.incoming ?? 0,
+        outgoing: metric?.network?.outgoing ?? 0,
+      };
+      setTimeSeriesData((prev) => [...prev, point].slice(-24));
+    };
+
+    const fetchMetrics = async () => {
+      try {
+        const res = await fetch('/api/system/metrics', { cache: 'no-store' });
+        const data = await res.json();
+        if (!isMounted || !data?.ok) return;
+        pushMetricPoint(data);
+        setLoading(false);
+      } catch {
+        if (isMounted) setLoading(false);
+      }
+    };
+
     setStats(mockStats);
-    setTimeSeriesData(generateTimeSeriesData(24));
     setTicketsData(generateTicketsData());
     setEquipmentStatus(generateEquipmentStatus());
-    setLoading(false);
+    fetchMetrics();
+
+    const timer = setInterval(fetchMetrics, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
   }, []);
 
   if (loading) {
@@ -226,7 +240,7 @@ export default function Dashboard() {
           <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
             <h3 className="font-bold text-slate-900 text-sm mb-4">État des serveurs</h3>
             <div className="space-y-2">
-              {servers.slice(0, 3).map((server) => (
+              {servers.slice(0, 3).map((server: any) => (
                 <div key={server.id} className="flex items-center justify-between p-3 bg-white/40 border border-slate-200/40 rounded-lg hover:bg-white/60 transition-colors">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-slate-900 text-sm">{server.name}</p>
@@ -250,7 +264,7 @@ export default function Dashboard() {
           <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
             <h3 className="font-bold text-slate-900 text-sm mb-4">Alertes récentes</h3>
             <div className="space-y-2">
-              {alerts.slice(0, 3).map((alert) => (
+              {alerts.slice(0, 3).map((alert: any) => (
                 <div
                   key={alert.id}
                   className={`p-3 rounded-lg text-xs border-l-2 backdrop-blur-sm ${
