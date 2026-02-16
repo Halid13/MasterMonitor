@@ -36,6 +36,7 @@ export default function Dashboard() {
   const [ticketsData, setTicketsData] = useState<any[]>([]);
   const [equipmentStatus, setEquipmentStatus] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [liveMetrics, setLiveMetrics] = useState<{ cpu: number; memory: number; disk: number | null; load: number } | null>(null);
 
   const { alerts, servers } = useDashboardStore();
 
@@ -52,7 +53,7 @@ export default function Dashboard() {
       totalTickets: 124,
       openTickets: 34,
       criticalTickets: 3,
-      serverHealthScore: 87,
+      serverHealthScore: 0,
       ipUtilization: 73,
       activeAlerts: 5,
     };
@@ -69,6 +70,12 @@ export default function Dashboard() {
         outgoing: metric?.network?.outgoing ?? 0,
       };
       setTimeSeriesData((prev) => [...prev, point].slice(-24));
+      setLiveMetrics({
+        cpu: metric?.cpu ?? 0,
+        memory: metric?.memory ?? 0,
+        disk: metric?.disk ?? null,
+        load: metric?.load ?? 0,
+      });
     };
 
     const fetchMetrics = async () => {
@@ -94,6 +101,24 @@ export default function Dashboard() {
       clearInterval(timer);
     };
   }, []);
+
+  const getHealthScore = () => {
+    if (!liveMetrics) return stats?.serverHealthScore ?? 0;
+    const cpu = Math.min(100, Math.max(0, liveMetrics.cpu));
+    const memory = Math.min(100, Math.max(0, liveMetrics.memory));
+    const load = Math.min(100, Math.max(0, liveMetrics.load));
+    const diskValue = liveMetrics.disk == null ? 0 : Math.min(100, Math.max(0, liveMetrics.disk));
+
+    const cpuScore = 100 - cpu;
+    const memScore = 100 - memory;
+    const diskScore = 100 - diskValue;
+    const loadScore = 100 - load;
+
+    const avg = cpuScore * 0.35 + memScore * 0.35 + diskScore * 0.2 + loadScore * 0.1;
+    return Math.round(Math.max(0, Math.min(100, avg)));
+  };
+
+  const healthScore = getHealthScore();
 
   if (loading) {
     return (
@@ -193,12 +218,12 @@ export default function Dashboard() {
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-xs text-slate-600">Score global</span>
-                  <span className="font-bold text-2xl text-blue-600">{stats.serverHealthScore}%</span>
+                  <span className="font-bold text-2xl text-blue-600">{healthScore}%</span>
                 </div>
                 <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-blue-400 to-blue-500"
-                    style={{ width: `${stats.serverHealthScore}%` }}
+                    style={{ width: `${healthScore}%` }}
                   />
                 </div>
               </div>

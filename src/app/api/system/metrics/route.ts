@@ -50,6 +50,74 @@ const getDiskUsageWindows = async (driveLetter = 'C') =>
     );
   });
 
+type NetSample = { rx: number; tx: number; ts: number };
+let lastNetSample: NetSample | null = null;
+
+const parseNetstatWindows = (output: string) => {
+  const rxMatch = output.match(/Bytes\s+Received\s*=\s*(\d+)/i);
+  const txMatch = output.match(/Bytes\s+Sent\s*=\s*(\d+)/i);
+  if (!rxMatch || !txMatch) return null;
+  return { rx: Number(rxMatch[1]), tx: Number(txMatch[1]) };
+};
+
+const getNetworkBytesWindows = async () =>
+  new Promise<{ rx: number; tx: number } | null>((resolve) => {
+    exec('netstat -e', (err, stdout) => {
+      if (err || !stdout) return resolve(null);
+      const parsed = parseNetstatWindows(stdout);
+      resolve(parsed);
+    });
+  });
+
+const getNetworkBytesLinux = async () =>
+  new Promise<{ rx: number; tx: number } | null>((resolve) => {
+    exec('cat /proc/net/dev', (err, stdout) => {
+      if (err || !stdout) return resolve(null);
+      const lines = stdout.split('\n').slice(2);
+      let rx = 0;
+      let tx = 0;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const [iface, rest] = trimmed.split(':');
+        if (!rest) continue;
+        const cols = rest.trim().split(/\s+/);
+        const ifaceName = iface.trim();
+        if (ifaceName === 'lo') continue;
+        const rxBytes = Number(cols[0] || 0);
+        const txBytes = Number(cols[8] || 0);
+        rx += rxBytes;
+        tx += txBytes;
+      }
+      resolve({ rx, tx });
+    });
+  });
+
+const getNetworkRate = async () => {
+  const now = Date.now();
+  const bytes = process.platform === 'win32'
+    ? await getNetworkBytesWindows()
+    : await getNetworkBytesLinux();
+
+  if (!bytes) return { incoming: 0, outgoing: 0 };
+
+  if (!lastNetSample) {
+    lastNetSample = { ...bytes, ts: now };
+    return { incoming: 0, outgoing: 0 };
+  }
+
+  const dt = (now - lastNetSample.ts) / 1000;
+  const incoming = dt > 0 ? (bytes.rx - lastNetSample.rx) / dt : 0;
+  const outgoing = dt > 0 ? (bytes.tx - lastNetSample.tx) / dt : 0;
+
+  lastNetSample = { ...bytes, ts: now };
+
+  return {
+    incoming: Number(Math.max(0, incoming).toFixed(2)),
+    outgoing: Number(Math.max(0, outgoing).toFixed(2)),
+  };
+};
+
 export async function GET() {
   const cpu = await getCpuUsage();
   const totalMem = os.totalmem();
@@ -60,6 +128,7 @@ export async function GET() {
   const loadPercent = loadAvg > 0 ? Math.min(100, (loadAvg / cpuCount) * 100) : cpu;
 
   const disk = process.platform === 'win32' ? await getDiskUsageWindows('C') : null;
+  const network = await getNetworkRate();
 
   return NextResponse.json({
     ok: true,
@@ -74,9 +143,6 @@ export async function GET() {
     arch: os.arch(),
     cores: cpuCount,
     diskDetail: disk,
-    network: {
-      incoming: 0,
-      outgoing: 0,
-    },
+    network,
   });
 }

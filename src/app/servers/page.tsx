@@ -1,10 +1,9 @@
 'use client';
 import MainLayout from '@/components/MainLayout';
-import ServerCard from '@/components/ServerCard';
 import { useDashboardStore } from '@/store/dashboard';
 
 export default function ServersPage() {
-  const { servers } = useDashboardStore();
+  const { servers, alerts } = useDashboardStore();
 
   const averageHealth = servers.length > 0
     ? Math.round(servers.reduce((sum, s) => sum + s.healthScore, 0) / servers.length)
@@ -18,8 +17,78 @@ export default function ServersPage() {
     ? (servers.reduce((sum, s) => sum + s.metrics.memoryUsage, 0) / servers.length).toFixed(1)
     : 0;
 
+  const averageDisk = servers.length > 0
+    ? (servers.reduce((sum, s) => sum + s.metrics.diskUsage, 0) / servers.length).toFixed(1)
+    : 0;
+
+  const averageLoad = servers.length > 0
+    ? (servers.reduce((sum, s) => sum + s.metrics.cpuUsage, 0) / servers.length).toFixed(1)
+    : 0;
+
+  const averageUptime = servers.length > 0
+    ? (servers.reduce((sum, s) => sum + s.metrics.uptime, 0) / servers.length)
+    : 0;
+
+  const averageNetIn = servers.length > 0
+    ? (servers.reduce((sum, s) => sum + s.metrics.networkIn, 0) / servers.length)
+    : 0;
+
+  const averageNetOut = servers.length > 0
+    ? (servers.reduce((sum, s) => sum + s.metrics.networkOut, 0) / servers.length)
+    : 0;
+
   const onlineCount = servers.filter(s => s.status === 'online').length;
   const offlineCount = servers.filter(s => s.status === 'offline').length;
+  const totalServices = servers.reduce((sum, s) => sum + s.services.length, 0);
+  const servicesDown = servers.reduce((sum, s) => sum + s.services.filter((svc) => svc.status === 'stopped').length, 0);
+  const servicesWarning = servers.reduce((sum, s) => sum + s.services.filter((svc) => svc.status === 'warning').length, 0);
+  const incidentCount = alerts.length;
+  const criticalIncidents = alerts.filter((a) => a.type === 'critical').length;
+
+  const getThresholdStatus = (value: number, warning: number, critical: number) => {
+    if (value >= critical) return 'critique';
+    if (value >= warning) return 'attention';
+    return 'normal';
+  };
+
+  const getServiceStatus = (services: { status: string }[]) => {
+    if (services.some((s) => s.status === 'stopped')) return 'critique';
+    if (services.some((s) => s.status === 'warning')) return 'attention';
+    return 'normal';
+  };
+
+  const getServerStatus = (server: typeof servers[number]) => {
+    const cpuStatus = getThresholdStatus(server.metrics.cpuUsage, 70, 85);
+    const diskStatus = getThresholdStatus(server.metrics.diskUsage, 80, 90);
+    const serviceStatus = getServiceStatus(server.services);
+    if ([cpuStatus, diskStatus, serviceStatus].includes('critique')) return 'critique';
+    if ([cpuStatus, diskStatus, serviceStatus].includes('attention')) return 'attention';
+    return 'normal';
+  };
+
+  const statusBadge = (status: 'normal' | 'attention' | 'critique') => {
+    switch (status) {
+      case 'critique':
+        return 'bg-red-100 text-red-700';
+      case 'attention':
+        return 'bg-yellow-100 text-yellow-700';
+      default:
+        return 'bg-green-100 text-green-700';
+    }
+  };
+
+  const formatUptime = (seconds: number) => {
+    if (!seconds) return '0h';
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    return days > 0 ? `${days}j ${hours}h` : `${hours}h`;
+  };
+
+  const formatThroughput = (value: number) => {
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)} Mo/s`;
+    if (value >= 1_000) return `${(value / 1_000).toFixed(2)} Ko/s`;
+    return `${value.toFixed(0)} o/s`;
+  };
 
   return (
     <MainLayout>
@@ -53,14 +122,195 @@ export default function ServersPage() {
           </div>
         </div>
 
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-2">
+            <h3 className="text-sm font-semibold text-gray-700">Analyse rapide</h3>
+            <div className="text-xs text-gray-500">Seuils: CPU ≥ 70% (attention) ≥ 85% (critique)</div>
+            <div className="text-xs text-gray-500">RAM ≥ 75% (attention) ≥ 90% (critique)</div>
+            <div className="text-xs text-gray-500">Disque ≥ 80% (attention) ≥ 90% (critique)</div>
+            <div className="text-xs text-gray-500">Services arrêtés → critique</div>
+          </div>
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <p className="text-sm text-gray-600 mb-2">Disque moyen</p>
+            <p className="text-3xl font-bold text-amber-600">{averageDisk}%</p>
+            <p className="text-xs text-gray-500 mt-2">Charge moyenne CPU: {averageLoad}%</p>
+          </div>
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <p className="text-sm text-gray-600 mb-2">Réseau moyen</p>
+            <p className="text-lg font-bold text-indigo-600">⬇ {formatThroughput(averageNetIn)}</p>
+            <p className="text-lg font-bold text-purple-600">⬆ {formatThroughput(averageNetOut)}</p>
+            <p className="text-xs text-gray-500 mt-2">Uptime moyen: {formatUptime(averageUptime)}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <p className="text-sm text-gray-600 mb-2">Services surveillés</p>
+            <p className="text-3xl font-bold text-slate-700">{totalServices}</p>
+            <p className="text-xs text-gray-500 mt-2">Avertissements: {servicesWarning} • Arrêtés: {servicesDown}</p>
+          </div>
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <p className="text-sm text-gray-600 mb-2">Incidents</p>
+            <p className="text-3xl font-bold text-rose-600">{incidentCount}</p>
+            <p className="text-xs text-gray-500 mt-2">Critiques: {criticalIncidents}</p>
+          </div>
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <p className="text-sm text-gray-600 mb-2">Dernier contrôle</p>
+            <p className="text-2xl font-bold text-slate-700">
+              {servers[0] ? new Date(servers[0].lastHealthCheck).toLocaleString('fr-FR') : '—'}
+            </p>
+          </div>
+        </div>
+
         {/* Servers Grid */}
         <div>
           <h2 className="text-2xl font-bold text-gray-900 mb-4">État détaillé des serveurs</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {servers.length > 0 ? (
-              servers.map((server) => (
-                <ServerCard key={server.id} server={server} />
-              ))
+              servers.map((server) => {
+                const cpuStatus = getThresholdStatus(server.metrics.cpuUsage, 70, 85);
+                const ramStatus = getThresholdStatus(server.metrics.memoryUsage, 75, 90);
+                const diskStatus = getThresholdStatus(server.metrics.diskUsage, 80, 90);
+                const serviceStatus = getServiceStatus(server.services);
+                const serverStatus = getServerStatus(server);
+                const incidents = alerts
+                  .filter((alert) => alert.source === server.name)
+                  .slice(0, 3);
+
+                return (
+                  <div key={server.id} className="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-bold text-lg text-gray-900">{server.name}</h3>
+                        <p className="text-sm text-gray-500">{server.ipAddress}</p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadge(serverStatus)}`}>
+                        {serverStatus}
+                      </span>
+                    </div>
+
+                    {/* Surveillance */}
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">Surveillance</p>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
+                          <span>Disponibilité</span>
+                          <span className={`text-xs font-semibold ${statusBadge(server.status === 'offline' ? 'critique' : 'normal')}`}>
+                            {server.status === 'offline' ? 'critique' : 'normal'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
+                          <span>CPU</span>
+                          <span className={`text-xs font-semibold ${statusBadge(cpuStatus as any)}`}>{cpuStatus}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
+                          <span>RAM</span>
+                          <span className={`text-xs font-semibold ${statusBadge(ramStatus as any)}`}>{ramStatus}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
+                          <span>Disque</span>
+                          <span className={`text-xs font-semibold ${statusBadge(diskStatus as any)}`}>{diskStatus}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
+                          <span>État services</span>
+                          <span className={`text-xs font-semibold ${statusBadge(serviceStatus as any)}`}>{serviceStatus}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Informations affichées */}
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">Informations affichées</p>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="rounded-md bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Statut serveur</p>
+                          <p className="font-semibold text-gray-800">{server.status}</p>
+                        </div>
+                        <div className="rounded-md bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Adresse réseau</p>
+                          <p className="font-semibold text-gray-800">{server.ipAddress}</p>
+                        </div>
+                        <div className="rounded-md bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Masque</p>
+                          <p className="font-semibold text-gray-800">—</p>
+                        </div>
+                        <div className="rounded-md bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Historique incidents</p>
+                          <p className="font-semibold text-gray-800">{incidents.length} incident(s)</p>
+                        </div>
+                        <div className="rounded-md bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Processus</p>
+                          <p className="font-semibold text-gray-800">{server.metrics.processCount}</p>
+                        </div>
+                        <div className="rounded-md bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Uptime</p>
+                          <p className="font-semibold text-gray-800">{formatUptime(server.metrics.uptime)}</p>
+                        </div>
+                      </div>
+                      {incidents.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {incidents.map((incident) => (
+                            <div key={incident.id} className="text-xs text-gray-600">
+                              • {incident.title}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Alertes */}
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">Alertes</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
+                          <span>Surcharge CPU</span>
+                          <span className={`text-xs font-semibold ${statusBadge(cpuStatus as any)}`}>{cpuStatus}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
+                          <span>Disque plein</span>
+                          <span className={`text-xs font-semibold ${statusBadge(diskStatus as any)}`}>{diskStatus}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
+                          <span>Service indisponible</span>
+                          <span className={`text-xs font-semibold ${statusBadge(serviceStatus as any)}`}>{serviceStatus}</span>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500">Affichage par statut : normal, attention, critique.</div>
+                    </div>
+
+                    {/* Détails techniques */}
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">Détails techniques</p>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="rounded-md bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">CPU</p>
+                          <p className="font-semibold text-gray-800">{server.metrics.cpuUsage.toFixed(1)}%</p>
+                        </div>
+                        <div className="rounded-md bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">RAM</p>
+                          <p className="font-semibold text-gray-800">{server.metrics.memoryUsage.toFixed(1)}%</p>
+                        </div>
+                        <div className="rounded-md bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Disque</p>
+                          <p className="font-semibold text-gray-800">{server.metrics.diskUsage.toFixed(1)}%</p>
+                        </div>
+                        <div className="rounded-md bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Réseau</p>
+                          <p className="font-semibold text-gray-800">⬇ {formatThroughput(server.metrics.networkIn)} / ⬆ {formatThroughput(server.metrics.networkOut)}</p>
+                        </div>
+                        <div className="rounded-md bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Dernière vérif.</p>
+                          <p className="font-semibold text-gray-800">{new Date(server.lastHealthCheck).toLocaleString('fr-FR')}</p>
+                        </div>
+                        <div className="rounded-md bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Santé</p>
+                          <p className="font-semibold text-gray-800">{server.healthScore}%</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <div className="col-span-full bg-white rounded-lg border border-gray-200 p-8 text-center">
                 <p className="text-gray-500">Aucun serveur configuré</p>
@@ -70,35 +320,6 @@ export default function ServersPage() {
           </div>
         </div>
 
-        {/* Services Status */}
-        {servers.length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">État des services</h2>
-            <div className="space-y-4">
-              {servers.map((server) => (
-                <div key={server.id} className="border-b border-gray-200 pb-4 last:border-b-0">
-                  <h3 className="font-semibold text-gray-900 mb-3">{server.name}</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {server.services.map((service) => (
-                      <div key={service.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                        <span className="font-medium text-gray-900">{service.name}</span>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          service.status === 'running'
-                            ? 'bg-green-100 text-green-800'
-                            : service.status === 'warning'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {service.status}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </MainLayout>
   );
