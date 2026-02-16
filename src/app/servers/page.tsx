@@ -2,13 +2,18 @@
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export default function ServersPage() {
   const { servers, alerts, addServer, updateServerStatus, deleteServer } = useDashboardStore();
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ name: '', ipAddress: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const serversRef = useRef(servers);
+
+  useEffect(() => {
+    serversRef.current = servers;
+  }, [servers]);
 
   useEffect(() => {
     let isMounted = true;
@@ -61,6 +66,51 @@ export default function ServersPage() {
       clearInterval(timer);
     };
   }, [addServer, servers, updateServerStatus]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncRemoteServers = async () => {
+      const list = serversRef.current.filter((s) => s.id !== 'local-pc');
+      await Promise.all(
+        list.map(async (server) => {
+          if (!server.ipAddress) return;
+          try {
+            const res = await fetch(`/api/system/remote-metrics?host=${server.ipAddress}`, { cache: 'no-store' });
+            const data = await res.json();
+            if (!isMounted || !data?.ok) {
+              updateServerStatus(server.id, { status: 'warning' });
+              return;
+            }
+            const healthScore = Math.round(100 - Math.max(data.cpu || 0, data.memory || 0, data.disk || 0));
+            updateServerStatus(server.id, {
+              name: data.host || server.name,
+              status: 'online',
+              healthScore,
+              metrics: {
+                ...server.metrics,
+                cpuUsage: data.cpu ?? 0,
+                memoryUsage: data.memory ?? 0,
+                diskUsage: data.disk ?? 0,
+                uptime: data.uptime ?? 0,
+                timestamp: new Date(),
+              },
+              lastHealthCheck: new Date(),
+            });
+          } catch {
+            updateServerStatus(server.id, { status: 'offline' });
+          }
+        }),
+      );
+    };
+
+    syncRemoteServers();
+    const timer = setInterval(syncRemoteServers, 10000);
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
+  }, [updateServerStatus]);
 
   const averageHealth = servers.length > 0
     ? Math.round(servers.reduce((sum, s) => sum + s.healthScore, 0) / servers.length)
@@ -372,6 +422,17 @@ export default function ServersPage() {
                 const incidents = alerts
                   .filter((alert) => alert.source === server.name)
                   .slice(0, 3);
+                const alertItems = [
+                  cpuStatus !== 'normal'
+                    ? { label: 'Surcharge CPU', status: cpuStatus }
+                    : null,
+                  diskStatus !== 'normal'
+                    ? { label: 'Disque plein', status: diskStatus }
+                    : null,
+                  serviceStatus !== 'normal'
+                    ? { label: 'Service indisponible', status: serviceStatus }
+                    : null,
+                ].filter(Boolean) as { label: string; status: 'normal' | 'attention' | 'critique' }[];
 
                 return (
                   <div
@@ -483,9 +544,20 @@ export default function ServersPage() {
                         <p className="mt-2 text-[11px] text-slate-500">Basé sur services actifs/arrêtés.</p>
                       </div>
                       <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
-                        <p className="text-slate-500">Dernière vérif.</p>
-                        <p className="text-sm font-semibold text-slate-900">{new Date(server.lastHealthCheck).toLocaleString('fr-FR')}</p>
-                        <p className="mt-2 text-[11px] text-slate-500">Horodatage du dernier contrôle.</p>
+                        <p className="text-slate-500">Alertes</p>
+                        {alertItems.length === 0 ? (
+                          <p className="mt-2 text-sm font-semibold text-slate-900">Aucune alerte</p>
+                        ) : (
+                          <div className="mt-2 space-y-2">
+                            {alertItems.map((alertItem) => (
+                              <div key={alertItem.label} className={`inline-flex items-center gap-2 rounded-full border px-2 py-1 text-[11px] font-semibold ${statusBadge(alertItem.status)}`}>
+                                <span className={`h-2 w-2 rounded-full ${statusDot(alertItem.status)}`} />
+                                {alertItem.label}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <p className="mt-2 text-[11px] text-slate-500">Déclenchées si seuil dépassé.</p>
                       </div>
                       <div className="col-span-2 rounded-2xl border border-slate-100 bg-white/70 p-4">
                         <p className="text-slate-500">Historique incidents</p>
