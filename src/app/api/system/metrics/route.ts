@@ -118,6 +118,19 @@ const getNetworkRate = async () => {
   };
 };
 
+const getPrimaryNetwork = () => {
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    const iface = nets[name] || [];
+    for (const addr of iface) {
+      if (addr.family === 'IPv4' && !addr.internal) {
+        return { ip: addr.address, netmask: addr.netmask, name };
+      }
+    }
+  }
+  return { ip: null, netmask: null, name: null };
+};
+
 export async function GET() {
   const cpu = await getCpuUsage();
   const totalMem = os.totalmem();
@@ -129,6 +142,7 @@ export async function GET() {
 
   const disk = process.platform === 'win32' ? await getDiskUsageWindows('C') : null;
   const network = await getNetworkRate();
+  const primaryNetwork = getPrimaryNetwork();
 
   return NextResponse.json({
     ok: true,
@@ -142,6 +156,9 @@ export async function GET() {
     platform: os.platform(),
     arch: os.arch(),
     cores: cpuCount,
+    ipAddress: primaryNetwork.ip,
+    netmask: primaryNetwork.netmask,
+    interface: primaryNetwork.name,
     diskDetail: disk,
     network,
   });

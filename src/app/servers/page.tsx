@@ -1,13 +1,66 @@
 'use client';
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
-import { Plus, X } from 'lucide-react';
-import { useState } from 'react';
+import { Pencil, Plus, Trash2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 export default function ServersPage() {
-  const { servers, alerts, addServer } = useDashboardStore();
+  const { servers, alerts, addServer, updateServerStatus, deleteServer } = useDashboardStore();
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ name: '', ipAddress: '' });
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncLocalServer = async () => {
+      try {
+        const res = await fetch('/api/system/metrics', { cache: 'no-store' });
+        const data = await res.json();
+        if (!isMounted || !data?.ok) return;
+
+        const serverId = 'local-pc';
+        const exists = servers.some((s) => s.id === serverId);
+
+        const base = {
+          id: serverId,
+          name: data.host || 'Mon PC',
+          ipAddress: data.ipAddress || '127.0.0.1',
+          status: 'online' as const,
+          healthScore: Math.round(100 - Math.max(data.cpu || 0, data.memory || 0)),
+          metrics: {
+            id: `${serverId}-metrics`,
+            serverId,
+            cpuUsage: data.cpu ?? 0,
+            memoryUsage: data.memory ?? 0,
+            diskUsage: data.disk ?? 0,
+            networkIn: data.network?.incoming ?? 0,
+            networkOut: data.network?.outgoing ?? 0,
+            processCount: 0,
+            uptime: data.uptime ?? 0,
+            timestamp: new Date(),
+          },
+          lastHealthCheck: new Date(),
+          services: [],
+        };
+
+        if (!exists) {
+          addServer(base);
+        } else {
+          updateServerStatus(serverId, base);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    syncLocalServer();
+    const timer = setInterval(syncLocalServer, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
+  }, [addServer, servers, updateServerStatus]);
 
   const averageHealth = servers.length > 0
     ? Math.round(servers.reduce((sum, s) => sum + s.healthScore, 0) / servers.length)
@@ -81,6 +134,17 @@ export default function ServersPage() {
     }
   };
 
+  const statusDot = (status: 'normal' | 'attention' | 'critique') => {
+    switch (status) {
+      case 'critique':
+        return 'bg-red-500';
+      case 'attention':
+        return 'bg-yellow-500';
+      default:
+        return 'bg-green-500';
+    }
+  };
+
   const formatUptime = (seconds: number) => {
     if (!seconds) return '0h';
     const days = Math.floor(seconds / 86400);
@@ -98,30 +162,54 @@ export default function ServersPage() {
     e.preventDefault();
     if (!formData.name.trim() || !formData.ipAddress.trim()) return;
 
-    addServer({
-      id: Date.now().toString(),
-      name: formData.name.trim(),
-      ipAddress: formData.ipAddress.trim(),
-      status: 'online',
-      healthScore: 100,
-      metrics: {
-        id: `${Date.now()}-metrics`,
-        serverId: Date.now().toString(),
-        cpuUsage: 0,
-        memoryUsage: 0,
-        diskUsage: 0,
-        networkIn: 0,
-        networkOut: 0,
-        processCount: 0,
-        uptime: 0,
-        timestamp: new Date(),
-      },
-      lastHealthCheck: new Date(),
-      services: [],
-    });
+    if (editingId) {
+      updateServerStatus(editingId, {
+        name: formData.name.trim(),
+        ipAddress: formData.ipAddress.trim(),
+      });
+      setEditingId(null);
+    } else {
+      const id = Date.now().toString();
+      addServer({
+        id,
+        name: formData.name.trim(),
+        ipAddress: formData.ipAddress.trim(),
+        status: 'online',
+        healthScore: 100,
+        metrics: {
+          id: `${id}-metrics`,
+          serverId: id,
+          cpuUsage: 0,
+          memoryUsage: 0,
+          diskUsage: 0,
+          networkIn: 0,
+          networkOut: 0,
+          processCount: 0,
+          uptime: 0,
+          timestamp: new Date(),
+        },
+        lastHealthCheck: new Date(),
+        services: [],
+      });
+    }
 
     setFormData({ name: '', ipAddress: '' });
     setShowModal(false);
+  };
+
+  const handleEdit = (id: string) => {
+    const server = servers.find((s) => s.id === id);
+    if (!server) return;
+    setFormData({ name: server.name, ipAddress: server.ipAddress });
+    setEditingId(id);
+    setShowModal(true);
+  };
+
+  const handleDelete = (id: string) => {
+    if (id === 'local-pc') return;
+    if (window.confirm('Supprimer ce serveur ?')) {
+      deleteServer(id);
+    }
   };
 
   return (
@@ -145,10 +233,14 @@ export default function ServersPage() {
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl p-6 w-full max-w-md border border-gray-200 shadow-xl space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-gray-900">Ajouter un serveur</h2>
+                <h2 className="text-lg font-bold text-gray-900">{editingId ? 'Modifier le serveur' : 'Ajouter un serveur'}</h2>
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false);
+                    setEditingId(null);
+                    setFormData({ name: '', ipAddress: '' });
+                  }}
                   className="p-2 rounded-md hover:bg-gray-100"
                   aria-label="Fermer"
                 >
@@ -183,11 +275,15 @@ export default function ServersPage() {
                     type="submit"
                     className="flex-1 rounded-md bg-blue-600 text-white py-2 text-sm font-semibold hover:bg-blue-700"
                   >
-                    Ajouter
+                    {editingId ? 'Enregistrer' : 'Ajouter'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowModal(false)}
+                    onClick={() => {
+                      setShowModal(false);
+                      setEditingId(null);
+                      setFormData({ name: '', ipAddress: '' });
+                    }}
                     className="flex-1 rounded-md bg-gray-100 text-gray-700 py-2 text-sm font-semibold hover:bg-gray-200"
                   >
                     Annuler
@@ -278,134 +374,122 @@ export default function ServersPage() {
                   .slice(0, 3);
 
                 return (
-                  <div key={server.id} className="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-bold text-lg text-gray-900">{server.name}</h3>
-                        <p className="text-sm text-gray-500">{server.ipAddress}</p>
-                      </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadge(serverStatus)}`}>
-                        {serverStatus}
-                      </span>
-                    </div>
+                  <div
+                    key={server.id}
+                    className="relative overflow-hidden rounded-3xl border border-slate-200/60 bg-gradient-to-br from-white/90 via-white/70 to-slate-50/80 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.4)] transition hover:shadow-[0_25px_70px_-35px_rgba(15,23,42,0.45)]"
+                  >
+                    <div className="absolute -right-16 -top-16 h-40 w-40 rounded-full bg-blue-100/40 blur-3xl" />
+                    <div className="absolute -left-16 -bottom-16 h-40 w-40 rounded-full bg-indigo-100/40 blur-3xl" />
 
-                    {/* Surveillance */}
-                    <div className="space-y-2">
-                      <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">Surveillance</p>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
-                          <span>Disponibilité</span>
-                          <span className={`text-xs font-semibold ${statusBadge(server.status === 'offline' ? 'critique' : 'normal')}`}>
-                            {server.status === 'offline' ? 'critique' : 'normal'}
+                    <div className="relative flex flex-wrap items-start justify-between gap-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <span className="rounded-full bg-slate-100 px-2 py-1">{server.status}</span>
+                          <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadge(serverStatus)}`}>
+                            {serverStatus}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
-                          <span>CPU</span>
-                          <span className={`text-xs font-semibold ${statusBadge(cpuStatus as any)}`}>{cpuStatus}</span>
-                        </div>
-                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
-                          <span>RAM</span>
-                          <span className={`text-xs font-semibold ${statusBadge(ramStatus as any)}`}>{ramStatus}</span>
-                        </div>
-                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
-                          <span>Disque</span>
-                          <span className={`text-xs font-semibold ${statusBadge(diskStatus as any)}`}>{diskStatus}</span>
-                        </div>
-                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
-                          <span>État services</span>
-                          <span className={`text-xs font-semibold ${statusBadge(serviceStatus as any)}`}>{serviceStatus}</span>
-                        </div>
+                        <h3 className="text-xl font-semibold text-slate-900">{server.name}</h3>
+                        <p className="text-sm text-slate-500">{server.ipAddress}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(server.id)}
+                          className="rounded-full border border-slate-200/70 bg-white/80 p-2 text-slate-600 hover:bg-slate-100"
+                          title="Modifier"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(server.id)}
+                          className={`rounded-full border border-slate-200/70 p-2 ${
+                            server.id === 'local-pc'
+                              ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                              : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                          }`}
+                          title={server.id === 'local-pc' ? 'Serveur local non supprimable' : 'Supprimer'}
+                          disabled={server.id === 'local-pc'}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
 
-                    {/* Informations affichées */}
-                    <div className="space-y-2">
-                      <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">Informations affichées</p>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div className="rounded-md bg-gray-50 px-3 py-2">
-                          <p className="text-xs text-gray-500">Statut serveur</p>
-                          <p className="font-semibold text-gray-800">{server.status}</p>
-                        </div>
-                        <div className="rounded-md bg-gray-50 px-3 py-2">
-                          <p className="text-xs text-gray-500">Adresse réseau</p>
-                          <p className="font-semibold text-gray-800">{server.ipAddress}</p>
-                        </div>
-                        <div className="rounded-md bg-gray-50 px-3 py-2">
-                          <p className="text-xs text-gray-500">Masque</p>
-                          <p className="font-semibold text-gray-800">—</p>
-                        </div>
-                        <div className="rounded-md bg-gray-50 px-3 py-2">
-                          <p className="text-xs text-gray-500">Historique incidents</p>
-                          <p className="font-semibold text-gray-800">{incidents.length} incident(s)</p>
-                        </div>
-                        <div className="rounded-md bg-gray-50 px-3 py-2">
-                          <p className="text-xs text-gray-500">Processus</p>
-                          <p className="font-semibold text-gray-800">{server.metrics.processCount}</p>
-                        </div>
-                        <div className="rounded-md bg-gray-50 px-3 py-2">
-                          <p className="text-xs text-gray-500">Uptime</p>
-                          <p className="font-semibold text-gray-800">{formatUptime(server.metrics.uptime)}</p>
+                    <div className="relative mt-6 grid grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
+                        <p className="text-xs text-slate-500">Santé</p>
+                        <p className="text-2xl font-semibold text-slate-900">{server.healthScore}%</p>
+                        <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-indigo-500"
+                            style={{ width: `${server.healthScore}%` }}
+                          />
                         </div>
                       </div>
-                      {incidents.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          {incidents.map((incident) => (
-                            <div key={incident.id} className="text-xs text-gray-600">
-                              • {incident.title}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
+                        <p className="text-xs text-slate-500">Uptime</p>
+                        <p className="text-2xl font-semibold text-slate-900">{formatUptime(server.metrics.uptime)}</p>
+                        <p className="text-xs text-slate-500 mt-1">{server.metrics.processCount} processus</p>
+                      </div>
                     </div>
 
-                    {/* Alertes */}
-                    <div className="space-y-2">
-                      <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">Alertes</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
-                          <span>Surcharge CPU</span>
-                          <span className={`text-xs font-semibold ${statusBadge(cpuStatus as any)}`}>{cpuStatus}</span>
-                        </div>
-                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
-                          <span>Disque plein</span>
-                          <span className={`text-xs font-semibold ${statusBadge(diskStatus as any)}`}>{diskStatus}</span>
-                        </div>
-                        <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
-                          <span>Service indisponible</span>
-                          <span className={`text-xs font-semibold ${statusBadge(serviceStatus as any)}`}>{serviceStatus}</span>
+                    <div className="relative mt-6 grid grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
+                        <p className="text-xs text-slate-500">CPU</p>
+                        <p className="text-lg font-semibold text-slate-900">{server.metrics.cpuUsage.toFixed(1)}%</p>
+                        <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                          <span className={`h-2 w-2 rounded-full ${statusDot(cpuStatus as any)}`} />
+                          {cpuStatus}
                         </div>
                       </div>
-                      <div className="text-xs text-gray-500">Affichage par statut : normal, attention, critique.</div>
+                      <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
+                        <p className="text-xs text-slate-500">RAM</p>
+                        <p className="text-lg font-semibold text-slate-900">{server.metrics.memoryUsage.toFixed(1)}%</p>
+                        <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                          <span className={`h-2 w-2 rounded-full ${statusDot(ramStatus as any)}`} />
+                          {ramStatus}
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
+                        <p className="text-xs text-slate-500">Disque</p>
+                        <p className="text-lg font-semibold text-slate-900">{server.metrics.diskUsage.toFixed(1)}%</p>
+                        <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                          <span className={`h-2 w-2 rounded-full ${statusDot(diskStatus as any)}`} />
+                          {diskStatus}
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
+                        <p className="text-xs text-slate-500">Réseau</p>
+                        <p className="text-sm font-semibold text-slate-900">⬇ {formatThroughput(server.metrics.networkIn)}</p>
+                        <p className="text-sm font-semibold text-slate-900">⬆ {formatThroughput(server.metrics.networkOut)}</p>
+                      </div>
                     </div>
 
-                    {/* Détails techniques */}
-                    <div className="space-y-2">
-                      <p className="text-xs uppercase tracking-wide text-gray-400 font-semibold">Détails techniques</p>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div className="rounded-md bg-gray-50 px-3 py-2">
-                          <p className="text-xs text-gray-500">CPU</p>
-                          <p className="font-semibold text-gray-800">{server.metrics.cpuUsage.toFixed(1)}%</p>
+                    <div className="relative mt-6 grid grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
+                        <p className="text-slate-500">État services</p>
+                        <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                          <span className={`h-2 w-2 rounded-full ${statusDot(serviceStatus as any)}`} />
+                          {serviceStatus}
                         </div>
-                        <div className="rounded-md bg-gray-50 px-3 py-2">
-                          <p className="text-xs text-gray-500">RAM</p>
-                          <p className="font-semibold text-gray-800">{server.metrics.memoryUsage.toFixed(1)}%</p>
-                        </div>
-                        <div className="rounded-md bg-gray-50 px-3 py-2">
-                          <p className="text-xs text-gray-500">Disque</p>
-                          <p className="font-semibold text-gray-800">{server.metrics.diskUsage.toFixed(1)}%</p>
-                        </div>
-                        <div className="rounded-md bg-gray-50 px-3 py-2">
-                          <p className="text-xs text-gray-500">Réseau</p>
-                          <p className="font-semibold text-gray-800">⬇ {formatThroughput(server.metrics.networkIn)} / ⬆ {formatThroughput(server.metrics.networkOut)}</p>
-                        </div>
-                        <div className="rounded-md bg-gray-50 px-3 py-2">
-                          <p className="text-xs text-gray-500">Dernière vérif.</p>
-                          <p className="font-semibold text-gray-800">{new Date(server.lastHealthCheck).toLocaleString('fr-FR')}</p>
-                        </div>
-                        <div className="rounded-md bg-gray-50 px-3 py-2">
-                          <p className="text-xs text-gray-500">Santé</p>
-                          <p className="font-semibold text-gray-800">{server.healthScore}%</p>
-                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
+                        <p className="text-slate-500">Dernière vérif.</p>
+                        <p className="text-sm font-semibold text-slate-900">{new Date(server.lastHealthCheck).toLocaleString('fr-FR')}</p>
+                      </div>
+                      <div className="col-span-2 rounded-2xl border border-slate-100 bg-white/70 p-4">
+                        <p className="text-slate-500">Historique incidents</p>
+                        {incidents.length === 0 ? (
+                          <p className="text-sm font-semibold text-slate-900">Aucun incident récent</p>
+                        ) : (
+                          <div className="mt-2 space-y-1 text-slate-700">
+                            {incidents.map((incident) => (
+                              <div key={incident.id}>• {incident.title}</div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

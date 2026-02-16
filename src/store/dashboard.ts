@@ -29,6 +29,7 @@ interface DashboardStore {
   servers: ServerStatus[];
   setServers: (servers: ServerStatus[]) => void;
   addServer: (server: ServerStatus) => void;
+  deleteServer: (id: string) => void;
   updateServerStatus: (id: string, status: Partial<ServerStatus>) => void;
 
   // Alerts
@@ -103,6 +104,7 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
   servers: [],
   setServers: (servers) => set({ servers }),
   addServer: (server) => set((state) => ({ servers: [...state.servers, server] })),
+  deleteServer: (id) => set((state) => ({ servers: state.servers.filter((s) => s.id !== id) })),
   updateServerStatus: (id, status) =>
     set((state) => ({
       servers: state.servers.map((s) => (s.id === id ? { ...s, ...status } : s)),
