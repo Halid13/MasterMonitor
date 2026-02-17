@@ -359,90 +359,111 @@ export default function LogsPage() {
         </div>
 
         {/* Distribution par Sévérité */}
-        <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-3">
-          <h3 className="text-base font-bold text-slate-900 mb-2">Distribution par Sévérité</h3>
-          <div className="space-y-4">
+        <div className="rounded-xl bg-gradient-to-br from-white/80 via-white/70 to-slate-50/80 backdrop-blur-sm border border-slate-200/40 shadow-sm p-4">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <div className="flex justify-between mb-1">
-                <span className="text-sm font-medium text-red-700">🔴 Critique</span>
-                <span className="text-sm font-bold text-red-700">{stats.critical}</span>
+              <h3 className="text-base font-bold text-slate-900">Distribution par Sévérité</h3>
+              <p className="text-[11px] text-slate-500">Vue compacte par niveau</p>
+            </div>
+            <span className="text-[11px] text-slate-500">Total: {stats.total}</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="rounded-lg border border-red-200/60 bg-red-50/70 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-red-700">Critique</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                  {stats.total > 0 ? Math.round((stats.critical / stats.total) * 100) : 0}%
+                </span>
               </div>
-              <div className="w-full bg-slate-200 rounded-full h-3">
+              <div className="mt-2 text-2xl font-bold text-red-700">{stats.critical}</div>
+              <div className="mt-2 h-1.5 rounded-full bg-red-100">
                 <div
-                  className="bg-red-600 h-3 rounded-full transition-all"
+                  className="h-1.5 rounded-full bg-red-500"
                   style={{ width: `${stats.total > 0 ? (stats.critical / stats.total) * 100 : 0}%` }}
                 />
               </div>
             </div>
 
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="text-sm font-medium text-orange-700">🟠 Erreur</span>
-                <span className="text-sm font-bold text-orange-700">{stats.error}</span>
+            <div className="rounded-lg border border-orange-200/60 bg-orange-50/70 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-orange-700">Erreur</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                  {stats.total > 0 ? Math.round((stats.error / stats.total) * 100) : 0}%
+                </span>
               </div>
-              <div className="w-full bg-slate-200 rounded-full h-3">
+              <div className="mt-2 text-2xl font-bold text-orange-700">{stats.error}</div>
+              <div className="mt-2 h-1.5 rounded-full bg-orange-100">
                 <div
-                  className="bg-orange-500 h-3 rounded-full transition-all"
+                  className="h-1.5 rounded-full bg-orange-500"
                   style={{ width: `${stats.total > 0 ? (stats.error / stats.total) * 100 : 0}%` }}
                 />
               </div>
             </div>
 
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="text-sm font-medium text-yellow-700">🟡 Avertissement</span>
-                <span className="text-sm font-bold text-yellow-700">{stats.warning}</span>
+            <div className="rounded-lg border border-yellow-200/60 bg-yellow-50/70 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-yellow-700">Avertissement</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
+                  {stats.total > 0 ? Math.round((stats.warning / stats.total) * 100) : 0}%
+                </span>
               </div>
-              <div className="w-full bg-slate-200 rounded-full h-3">
+              <div className="mt-2 text-2xl font-bold text-yellow-700">{stats.warning}</div>
+              <div className="mt-2 h-1.5 rounded-full bg-yellow-100">
                 <div
-                  className="bg-yellow-500 h-3 rounded-full transition-all"
+                  className="h-1.5 rounded-full bg-yellow-500"
                   style={{ width: `${stats.total > 0 ? (stats.warning / stats.total) * 100 : 0}%` }}
                 />
               </div>
             </div>
+          </div>
 
-            <div className="pt-4 border-t border-slate-200 mt-4">
-              <p className="text-xs text-slate-600">
-                Santé du système: <span className="font-bold text-green-600">✅ Bon</span>
-              </p>
-              <p className="text-xs text-slate-600 mt-1">
-                Dernière mise à jour: <span className="font-mono">{new Date().toLocaleTimeString()}</span>
-              </p>
-            </div>
+          <div className="pt-3 border-t border-slate-200 mt-4">
+            <p className="text-xs text-slate-600">
+              Santé du système: <span className="font-bold text-green-600">✅ Bon</span>
+            </p>
+            <p className="text-xs text-slate-600 mt-1">
+              Dernière mise à jour: <span className="font-mono">{new Date().toLocaleTimeString()}</span>
+            </p>
           </div>
         </div>
 
 
         {/* Filters & Export */}
-        <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-6 space-y-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Filter size={18} /> Filtres et recherche
-            </h2>
+        <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-6 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-slate-900">
+              <div className="h-9 w-9 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center">
+                <Filter size={18} />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold">Filtres et recherche</h2>
+                <p className="text-xs text-slate-500">Affiner rapidement les logs affichés</p>
+              </div>
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={handleExport}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-200 text-slate-900 text-sm font-medium hover:bg-slate-300"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-semibold hover:bg-emerald-100"
               >
                 <Download size={16} /> Export CSV
               </button>
               <button
                 onClick={handlePurge}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-200 text-slate-900 text-sm font-medium hover:bg-slate-300"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-sm font-semibold hover:bg-rose-100"
               >
                 <Trash2 size={16} /> Purger
               </button>
             </div>
           </div>
 
-          {/* Filter Inputs */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div>
-              <label className="text-xs font-medium text-slate-700 mb-1 block">Catégorie</label>
+            <div className="bg-white/80 rounded-lg border border-slate-200/60 p-3">
+              <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Catégorie</label>
               <select
                 value={filterCategory}
                 onChange={(e) => { setFilterCategory(e.target.value as any); setPage(1); }}
-                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Toutes</option>
                 <option value="system">Système</option>
@@ -451,12 +472,12 @@ export default function LogsPage() {
                 <option value="security">Sécurité</option>
               </select>
             </div>
-            <div>
-              <label className="text-xs font-medium text-slate-700 mb-1 block">Niveau</label>
+            <div className="bg-white/80 rounded-lg border border-slate-200/60 p-3">
+              <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Niveau</label>
               <select
                 value={filterLevel}
                 onChange={(e) => { setFilterLevel(e.target.value as any); setPage(1); }}
-                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Tous</option>
                 <option value="info">Info</option>
@@ -465,12 +486,12 @@ export default function LogsPage() {
                 <option value="critical">Critique</option>
               </select>
             </div>
-            <div>
-              <label className="text-xs font-medium text-slate-700 mb-1 block">Module</label>
+            <div className="bg-white/80 rounded-lg border border-slate-200/60 p-3">
+              <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Module</label>
               <select
                 value={filterModule}
                 onChange={(e) => { setFilterModule(e.target.value); setPage(1); }}
-                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Tous</option>
                 {modules.map((m) => (
@@ -480,12 +501,12 @@ export default function LogsPage() {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="text-xs font-medium text-slate-700 mb-1 block">Utilisateur</label>
+            <div className="bg-white/80 rounded-lg border border-slate-200/60 p-3">
+              <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Utilisateur</label>
               <select
                 value={filterUsername}
                 onChange={(e) => { setFilterUsername(e.target.value); setPage(1); }}
-                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Tous</option>
                 {users.map((u) => (
@@ -495,21 +516,20 @@ export default function LogsPage() {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="text-xs font-medium text-slate-700 mb-1 block">Jours à conserver</label>
+            <div className="bg-white/80 rounded-lg border border-slate-200/60 p-3">
+              <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Jours à conserver</label>
               <input
                 type="number"
                 value={purgedays}
                 onChange={(e) => setPurgeDays(parseInt(e.target.value))}
-                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min="1"
               />
             </div>
           </div>
 
-          {/* Search */}
-          <div>
-            <label className="text-xs font-medium text-slate-700 mb-1 block">Recherche (action, objet, module)</label>
+          <div className="bg-white/80 rounded-lg border border-slate-200/60 p-3">
+            <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Recherche (action, objet, module)</label>
             <div className="relative">
               <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
               <input
@@ -517,7 +537,7 @@ export default function LogsPage() {
                 placeholder="Chercher..."
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-                className="w-full rounded-md border border-slate-300 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-200 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
