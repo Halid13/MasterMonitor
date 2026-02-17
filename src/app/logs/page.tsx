@@ -142,23 +142,44 @@ export default function LogsPage() {
 
   // Handle purge
   const handlePurge = async () => {
-    if (!window.confirm(`Supprimer les logs plus anciens que ${purgedays} jours ?`)) return;
+    const days = Number(purgedays);
+    if (!Number.isFinite(days) || days < 1) {
+      alert('Veuillez saisir un nombre de jours valide.');
+      return;
+    }
+    if (!window.confirm(`Supprimer les logs plus anciens que ${days} jours ?`)) return;
 
     try {
-      const res = await fetch(`/api/logs?action=purge-old&days=${purgedays}`, {
+      const res = await fetch(`/api/logs?action=purge-old&days=${days}`, {
         method: 'DELETE',
       });
       const data = await res.json();
-      if (data.ok) {
-        alert(`${data.removed} anciens logs supprimés`);
-        setPage(1);
-        // Refetch
-        const resLogs = await fetch(`/api/logs?limit=${itemsPerPage}`, { cache: 'no-store' });
-        const logsData = await resLogs.json();
-        if (logsData.ok) setLogs(logsData.logs);
+      if (!res.ok || !data.ok) {
+        alert(data?.error || 'Échec de la purge des logs.');
+        return;
+      }
+
+      alert(`${data.removed} anciens logs supprimés`);
+      setPage(1);
+
+      const params = new URLSearchParams();
+      if (filterCategory) params.append('category', filterCategory);
+      if (filterLevel) params.append('level', filterLevel);
+      if (filterModule) params.append('module', filterModule);
+      if (filterUsername) params.append('username', filterUsername);
+      if (searchQuery) params.append('search', searchQuery);
+      params.append('limit', itemsPerPage.toString());
+      params.append('offset', '0');
+
+      const resLogs = await fetch(`/api/logs?${params}`, { cache: 'no-store' });
+      const logsData = await resLogs.json();
+      if (logsData.ok) {
+        setLogs(logsData.logs);
+        setTotalPages(logsData.pages);
       }
     } catch (error) {
       console.error('Purge failed:', error);
+      alert('Erreur réseau lors de la purge des logs.');
     }
   };
 
@@ -230,7 +251,7 @@ export default function LogsPage() {
 
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-3 border-l-4 border-blue-500">
+          <div className="rounded-xl bg-gradient-to-br from-blue-50/80 via-white to-blue-50/40 backdrop-blur-sm border border-blue-100/70 shadow-sm p-3 border-l-4 border-blue-500">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-slate-600 font-semibold text-sm">Total des Logs</h3>
               <Activity className="w-4 h-4 text-blue-600" />
@@ -239,7 +260,7 @@ export default function LogsPage() {
             <p className="text-[10px] text-slate-500 mt-1">Tous les logs</p>
           </div>
 
-          <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-3 border-l-4 border-red-500">
+          <div className="rounded-xl bg-gradient-to-br from-red-50/80 via-white to-rose-50/40 backdrop-blur-sm border border-red-100/70 shadow-sm p-3 border-l-4 border-red-500">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-slate-600 font-semibold text-sm">Événements Critiques</h3>
               <AlertTriangle className="w-4 h-4 text-red-600" />
@@ -257,7 +278,7 @@ export default function LogsPage() {
             <p className="text-[10px] text-slate-500 mt-1">À surveiller</p>
           </div>
 
-          <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-3 border-l-4 border-orange-500">
+          <div className="rounded-xl bg-gradient-to-br from-orange-50/80 via-white to-amber-50/40 backdrop-blur-sm border border-orange-100/70 shadow-sm p-3 border-l-4 border-orange-500">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-slate-600 font-semibold text-sm">Avertissements</h3>
               <Shield className="w-4 h-4 text-orange-600" />
@@ -522,7 +543,10 @@ export default function LogsPage() {
               <input
                 type="number"
                 value={purgedays}
-                onChange={(e) => setPurgeDays(parseInt(e.target.value))}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  setPurgeDays(Number.isFinite(next) && next > 0 ? next : 1);
+                }}
                 className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min="1"
               />
@@ -546,7 +570,7 @@ export default function LogsPage() {
 
         {/* Logs Table */}
         <div className="rounded-2xl bg-white/90 backdrop-blur-sm border border-slate-200/60 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-200/60 bg-gradient-to-r from-slate-50 via-white to-slate-50">
+          <div className="px-5 py-4 border-b border-slate-200/60 bg-gradient-to-r from-blue-50/70 via-white to-purple-50/60">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Journal des logs</h3>
@@ -567,7 +591,7 @@ export default function LogsPage() {
             <>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
+                  <thead className="bg-gradient-to-r from-slate-50 via-white to-slate-50 border-b border-slate-200">
                     <tr className="text-[11px] uppercase tracking-wider text-slate-500">
                       <th className="px-5 py-3 text-left">Date</th>
                       <th className="px-5 py-3 text-left">Catégorie</th>
@@ -583,7 +607,7 @@ export default function LogsPage() {
                     {logs.map((log, index) => (
                       <tr
                         key={log.id}
-                        className={`group hover:bg-slate-50 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}
+                        className={`group hover:bg-blue-50/40 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}
                       >
                         <td className="px-5 py-3 text-xs text-slate-500">
                           {new Date(log.timestamp).toLocaleString('fr-FR')}
@@ -600,7 +624,7 @@ export default function LogsPage() {
                           </span>
                         </td>
                         <td className="px-5 py-3 text-xs font-medium text-slate-900">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
                             {log.module}
                           </span>
                         </td>
