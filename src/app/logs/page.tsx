@@ -430,40 +430,43 @@ export default function LogsPage() {
 
 
         {/* Filters & Export */}
-        <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-6 space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-slate-900">
-              <div className="h-9 w-9 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center">
+        <div className="rounded-2xl bg-gradient-to-br from-white via-slate-50 to-blue-50/60 text-slate-900 border border-blue-100/60 shadow-[0_0_0_1px_rgba(59,130,246,0.12),0_20px_60px_-35px_rgba(59,130,246,0.35)] p-6 space-y-5 relative overflow-hidden">
+          <div className="absolute -top-20 -right-20 h-64 w-64 rounded-full bg-blue-400/10 blur-3xl" />
+          <div className="absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-purple-400/10 blur-3xl" />
+
+          <div className="relative flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-blue-500/10 text-blue-700 flex items-center justify-center ring-1 ring-blue-500/20">
                 <Filter size={18} />
               </div>
               <div>
                 <h2 className="text-lg font-bold">Filtres et recherche</h2>
-                <p className="text-xs text-slate-500">Affiner rapidement les logs affichés</p>
+                <p className="text-xs text-slate-500">Interface avancée pour explorer les événements</p>
               </div>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={handleExport}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-semibold hover:bg-emerald-100"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-700 text-sm font-semibold hover:bg-emerald-500/20 ring-1 ring-emerald-400/30"
               >
                 <Download size={16} /> Export CSV
               </button>
               <button
                 onClick={handlePurge}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-sm font-semibold hover:bg-rose-100"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-500/10 text-rose-700 text-sm font-semibold hover:bg-rose-500/20 ring-1 ring-rose-400/30"
               >
                 <Trash2 size={16} /> Purger
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="bg-white/80 rounded-lg border border-slate-200/60 p-3">
+          <div className="relative grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="rounded-xl border border-blue-100/70 bg-white/80 p-3">
               <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Catégorie</label>
               <select
                 value={filterCategory}
                 onChange={(e) => { setFilterCategory(e.target.value as any); setPage(1); }}
-                className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Toutes</option>
                 <option value="system">Système</option>
@@ -472,12 +475,12 @@ export default function LogsPage() {
                 <option value="security">Sécurité</option>
               </select>
             </div>
-            <div className="bg-white/80 rounded-lg border border-slate-200/60 p-3">
+            <div className="rounded-xl border border-blue-100/70 bg-white/80 p-3">
               <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Niveau</label>
               <select
                 value={filterLevel}
                 onChange={(e) => { setFilterLevel(e.target.value as any); setPage(1); }}
-                className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Tous</option>
                 <option value="info">Info</option>
@@ -486,12 +489,12 @@ export default function LogsPage() {
                 <option value="critical">Critique</option>
               </select>
             </div>
-            <div className="bg-white/80 rounded-lg border border-slate-200/60 p-3">
+            <div className="rounded-xl border border-blue-100/70 bg-white/80 p-3">
               <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Module</label>
               <select
                 value={filterModule}
                 onChange={(e) => { setFilterModule(e.target.value); setPage(1); }}
-                className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Tous</option>
                 {modules.map((m) => (
@@ -501,12 +504,12 @@ export default function LogsPage() {
                 ))}
               </select>
             </div>
-            <div className="bg-white/80 rounded-lg border border-slate-200/60 p-3">
+            <div className="rounded-xl border border-blue-100/70 bg-white/80 p-3">
               <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Utilisateur</label>
               <select
                 value={filterUsername}
                 onChange={(e) => { setFilterUsername(e.target.value); setPage(1); }}
-                className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Tous</option>
                 {users.map((u) => (
@@ -516,19 +519,19 @@ export default function LogsPage() {
                 ))}
               </select>
             </div>
-            <div className="bg-white/80 rounded-lg border border-slate-200/60 p-3">
+            <div className="rounded-xl border border-blue-100/70 bg-white/80 p-3">
               <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Jours à conserver</label>
               <input
                 type="number"
                 value={purgedays}
                 onChange={(e) => setPurgeDays(parseInt(e.target.value))}
-                className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min="1"
               />
             </div>
           </div>
 
-          <div className="bg-white/80 rounded-lg border border-slate-200/60 p-3">
+          <div className="relative rounded-xl border border-blue-100/70 bg-white/80 p-3">
             <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Recherche (action, objet, module)</label>
             <div className="relative">
               <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
@@ -537,7 +540,7 @@ export default function LogsPage() {
                 placeholder="Chercher..."
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-                className="w-full rounded-md border border-slate-200 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
