@@ -3,7 +3,7 @@ import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { SystemLog, LogCategory, LogLevel } from '@/types';
 import { Download, Trash2, Filter, Search, AlertCircle, CheckCircle, BarChart3 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export default function LogsPage() {
   const { logs, setLogs, addLog, clearLogs } = useDashboardStore();
@@ -18,6 +18,7 @@ export default function LogsPage() {
   const [purgedays, setPurgeDays] = useState(30);
 
   const itemsPerPage = 50;
+  const logsRef = useRef<SystemLog[]>([]);
 
   // Fetch logs
   useEffect(() => {
@@ -47,6 +48,63 @@ export default function LogsPage() {
     };
 
     fetchLogs();
+  }, [filterCategory, filterLevel, filterModule, filterUsername, searchQuery, page, setLogs]);
+
+  useEffect(() => {
+    logsRef.current = logs;
+  }, [logs]);
+
+  const matchesCurrentFilters = (log: SystemLog) => {
+    if (filterCategory && log.category !== filterCategory) return false;
+    if (filterLevel && log.level !== filterLevel) return false;
+    if (filterModule && !log.module.toLowerCase().includes(filterModule.toLowerCase())) return false;
+    if (filterUsername && !(log.username || '').toLowerCase().includes(filterUsername.toLowerCase())) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const haystack = [
+        log.action,
+        log.objectImpacted,
+        log.module,
+        log.username || '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  };
+
+  useEffect(() => {
+    if (page !== 1) return;
+
+    const params = new URLSearchParams();
+    if (filterCategory) params.append('category', filterCategory);
+    if (filterLevel) params.append('level', filterLevel);
+    if (filterModule) params.append('module', filterModule);
+    if (filterUsername) params.append('username', filterUsername);
+    if (searchQuery) params.append('search', searchQuery);
+
+    const source = new EventSource(`/api/logs/stream?${params.toString()}`);
+
+    const onLog = (event: MessageEvent) => {
+      try {
+        const log = JSON.parse(event.data) as SystemLog;
+        if (!matchesCurrentFilters(log)) return;
+        const current = logsRef.current;
+        if (current.some((l) => l.id === log.id)) return;
+        const next = [log, ...current].slice(0, itemsPerPage);
+        setLogs(next);
+      } catch (error) {
+        console.error('Failed to parse log stream event:', error);
+      }
+    };
+
+    source.addEventListener('log', onLog as EventListener);
+
+    return () => {
+      source.removeEventListener('log', onLog as EventListener);
+      source.close();
+    };
   }, [filterCategory, filterLevel, filterModule, filterUsername, searchQuery, page, setLogs]);
 
   // Handle export
@@ -133,6 +191,7 @@ export default function LogsPage() {
     security: '🔒',
   };
 
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -196,6 +255,7 @@ export default function LogsPage() {
             <p className="text-2xl font-bold text-red-700">{stats.critical}</p>
           </div>
         </div>
+
 
         {/* Filters & Export */}
         <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">

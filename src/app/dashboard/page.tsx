@@ -24,10 +24,9 @@ const generateTicketsData = () => [
   { name: 'Dim', open: 3, inProgress: 2, closed: 8 },
 ];
 
-const generateEquipmentStatus = () => [
-  { name: 'Opérationnel', value: 145, color: '#10b981' },
-  { name: 'Maintenance', value: 8, color: '#f59e0b' },
-  { name: 'Hors ligne', value: 3, color: '#ef4444' },
+const buildEquipmentStatus = (operational: number, stock: number) => [
+  { name: 'En service', value: operational, color: '#10b981' },
+  { name: 'Stock', value: stock, color: '#3b82f6' },
 ];
 
 export default function Dashboard() {
@@ -37,25 +36,22 @@ export default function Dashboard() {
   const [equipmentStatus, setEquipmentStatus] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [liveMetrics, setLiveMetrics] = useState<{ cpu: number; memory: number; disk: number | null; load: number } | null>(null);
+  const [adUsers, setAdUsers] = useState<{ isActive: boolean }[]>([]);
 
-  const { alerts, servers } = useDashboardStore();
+  const { alerts, servers, equipment, tickets, ipAddresses } = useDashboardStore();
 
   useEffect(() => {
     let isMounted = true;
 
-    // Données de démonstration
-    const mockStats: DashboardStats = {
-      totalEquipment: 156,
-      operationalEquipment: 148,
-      offlineEquipment: 8,
-      totalUsers: 342,
-      activeUsers: 287,
-      totalTickets: 124,
-      openTickets: 34,
-      criticalTickets: 3,
-      serverHealthScore: 0,
-      ipUtilization: 73,
-      activeAlerts: 5,
+    const fetchAdUsers = async () => {
+      try {
+        const res = await fetch('/api/ad/users');
+        const data = await res.json();
+        if (!isMounted || !data?.ok) return;
+        setAdUsers(data.users || []);
+      } catch {
+        // ignore
+      }
     };
 
     const pushMetricPoint = (metric: any) => {
@@ -90,9 +86,8 @@ export default function Dashboard() {
       }
     };
 
-    setStats(mockStats);
     setTicketsData(generateTicketsData());
-    setEquipmentStatus(generateEquipmentStatus());
+    fetchAdUsers();
     fetchMetrics();
 
     const timer = setInterval(fetchMetrics, 5000);
@@ -101,6 +96,41 @@ export default function Dashboard() {
       clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    const totalEquipment = equipment.length;
+    const operationalEquipment = equipment.filter((e) => e.status === 'in-service').length;
+    const offlineEquipment = totalEquipment - operationalEquipment;
+
+    const totalUsers = adUsers.length;
+    const activeUsers = adUsers.filter((u) => u.isActive).length;
+
+    const totalTickets = tickets.length;
+    const openTickets = tickets.filter((t) => t.status === 'open').length;
+    const criticalTickets = tickets.filter((t) => t.priority === 'critical' && t.status !== 'closed').length;
+
+    const activeAlerts = alerts.filter((a) => !a.isResolved).length;
+
+    const ipUtilization = ipAddresses.length > 0
+      ? Math.round((ipAddresses.filter((ip) => ip.isActive).length / ipAddresses.length) * 100)
+      : 0;
+
+    setStats({
+      totalEquipment,
+      operationalEquipment,
+      offlineEquipment,
+      totalUsers,
+      activeUsers,
+      totalTickets,
+      openTickets,
+      criticalTickets,
+      serverHealthScore: 0,
+      ipUtilization,
+      activeAlerts,
+    });
+
+    setEquipmentStatus(buildEquipmentStatus(operationalEquipment, totalEquipment - operationalEquipment));
+  }, [equipment, tickets, alerts, ipAddresses, adUsers]);
 
   const getHealthScore = () => {
     if (!liveMetrics) return stats?.serverHealthScore ?? 0;

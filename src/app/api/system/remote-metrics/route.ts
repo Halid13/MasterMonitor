@@ -3,6 +3,7 @@ import { exec } from 'child_process';
 import { writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { captureSystemEvents } from '@/services/eventCapture';
 
 const { MM_REMOTE_USER, MM_REMOTE_PASS } = process.env;
 
@@ -93,6 +94,7 @@ try {
     const payload = jsonStart >= 0 ? stdout.slice(jsonStart).trim() : '';
     const data = payload ? JSON.parse(payload) : null;
     if (!data?.ok) {
+      captureSystemEvents.connectivityIssue(host, host, 'WinRM', 'Remote metrics returned error');
       return NextResponse.json(
         { 
           ok: false, 
@@ -111,6 +113,7 @@ try {
       uptime: data.uptime ?? 0,
     });
   } catch (err: any) {
+    captureSystemEvents.connectivityIssue(host, host, 'WinRM', err?.message || 'Unknown error');
     const details = debug
       ? {
           message: err?.message || 'Erreur inconnue',

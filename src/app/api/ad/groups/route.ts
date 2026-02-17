@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import ldap from 'ldapjs';
+import { logger } from '@/services/logger';
 
 const {
   LDAP_URL,
@@ -112,8 +113,10 @@ export async function GET() {
       });
     });
 
+    logger.logSystem('AD Groups Sync', 'LDAP', 'info', { count: groups.length });
     return NextResponse.json({ ok: true, groups });
   } catch {
+    logger.logSystem('AD Groups Sync Failed', 'LDAP', 'error');
     return NextResponse.json(
       { ok: false, error: 'Erreur LDAP.' },
       { status: 500 },

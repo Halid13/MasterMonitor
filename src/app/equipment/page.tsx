@@ -7,6 +7,32 @@ import { Equipment } from '@/types';
 import { Plus, Trash2, Edit2, X, Laptop, Printer, Smartphone, Wifi, Package, AlertCircle, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
+const getCookieValue = (name: string) => {
+  if (typeof document === 'undefined') return undefined;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : undefined;
+};
+
+const getCurrentUsername = () => getCookieValue('mm_user') || 'system';
+
+const postLog = (payload: {
+  category: 'action' | 'system' | 'user' | 'security';
+  level: 'info' | 'warning' | 'error' | 'critical';
+  module: string;
+  action: string;
+  objectImpacted: string;
+  username?: string;
+  details?: Record<string, any>;
+}) => {
+  fetch('/api/logs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => {
+    // Ignore client logging errors
+  });
+};
+
 export default function EquipmentPage() {
   const { equipment, users, addEquipment, updateEquipment, deleteEquipment } = useDashboardStore();
   const [showModal, setShowModal] = useState(false);
@@ -159,6 +185,16 @@ export default function EquipmentPage() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Équipements');
     XLSX.writeFile(workbook, `equipements_en_service_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+    postLog({
+      category: 'action',
+      level: 'info',
+      module: 'Equipment',
+      action: 'export',
+      objectImpacted: 'equipments-in-service',
+      username: getCurrentUsername(),
+      details: { format: 'xlsx', count: equipmentInService.length },
+    });
   };
 
   // Fonction pour exporter tous les équipements en XLSX (1 champ = 1 colonne) avec marquage des champs vides
@@ -225,6 +261,16 @@ export default function EquipmentPage() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Tous les équipements');
     XLSX.writeFile(workbook, `equipements_tous_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+    postLog({
+      category: 'action',
+      level: 'info',
+      module: 'Equipment',
+      action: 'export',
+      objectImpacted: 'equipments-all',
+      username: getCurrentUsername(),
+      details: { format: 'xlsx', count: equipment.length },
+    });
   };
 
   // Fonction pour exporter le stock en XLSX (1 champ = 1 colonne)
@@ -279,6 +325,16 @@ export default function EquipmentPage() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Stock');
     XLSX.writeFile(workbook, `equipements_stock_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+    postLog({
+      category: 'action',
+      level: 'info',
+      module: 'Equipment',
+      action: 'export',
+      objectImpacted: 'equipments-stock',
+      username: getCurrentUsername(),
+      details: { format: 'xlsx', count: equipmentInStock.length },
+    });
   };
 
   const EquipmentCard = ({ item }: { item: Equipment }) => {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import ldap from 'ldapjs';
+import { logger } from '@/services/logger';
 
 const {
   LDAP_URL,
@@ -175,8 +176,11 @@ export async function GET(request: Request) {
       });
     });
 
+    logger.logSystem('AD Users Sync', 'LDAP', 'info', { count: users.length });
     return NextResponse.json({ ok: true, users, raw: debug ? raw : undefined });
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR';
+    logger.logSystem('AD Users Sync Failed', 'LDAP', 'error', { message });
     return NextResponse.json(
       { ok: false, error: 'Erreur LDAP.' },
       { status: 500 },

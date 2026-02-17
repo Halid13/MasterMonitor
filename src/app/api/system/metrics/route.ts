@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import os from 'os';
 import { exec } from 'child_process';
+import { captureSystemEvents } from '@/services/eventCapture';
+import { logger } from '@/services/logger';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -52,6 +54,45 @@ const getDiskUsageWindows = async (driveLetter = 'C') =>
 
 type NetSample = { rx: number; tx: number; ts: number };
 let lastNetSample: NetSample | null = null;
+
+const ANOMALY_COOLDOWN_MS = 60_000;
+const anomalyState = {
+  cpu: { active: false, lastAt: 0 },
+  memory: { active: false, lastAt: 0 },
+  disk: { active: false, lastAt: 0 },
+  load: { active: false, lastAt: 0 },
+};
+
+const checkAnomaly = (
+  metric: keyof typeof anomalyState,
+  value: number,
+  threshold: number,
+  serverId: string,
+  serverName: string,
+) => {
+  const now = Date.now();
+  const state = anomalyState[metric];
+
+  if (value >= threshold) {
+    if (!state.active || now - state.lastAt > ANOMALY_COOLDOWN_MS) {
+      captureSystemEvents.metricsAnomalyDetected(serverId, serverName, metric.toUpperCase(), value, threshold);
+      state.active = true;
+      state.lastAt = now;
+    }
+    return;
+  }
+
+  if (state.active) {
+    logger.logSystem(
+      `Anomaly Resolved: ${metric.toUpperCase()} back to normal`,
+      `${serverName} (${serverId})`,
+      'info',
+      { metric, value, threshold },
+    );
+    state.active = false;
+    state.lastAt = now;
+  }
+};
 
 const parseNetstatWindows = (output: string) => {
   const rxMatch = output.match(/Bytes\s+Received\s*=\s*(\d+)/i);
@@ -143,6 +184,15 @@ export async function GET() {
   const disk = process.platform === 'win32' ? await getDiskUsageWindows('C') : null;
   const network = await getNetworkRate();
   const primaryNetwork = getPrimaryNetwork();
+  const serverName = os.hostname();
+  const serverId = `local-${serverName}`;
+
+  checkAnomaly('cpu', cpu, 85, serverId, serverName);
+  checkAnomaly('memory', Number(memory.toFixed(2)), 85, serverId, serverName);
+  if (disk?.percent != null) {
+    checkAnomaly('disk', Number(disk.percent.toFixed(2)), 90, serverId, serverName);
+  }
+  checkAnomaly('load', Number(loadPercent.toFixed(2)), 90, serverId, serverName);
 
   return NextResponse.json({
     ok: true,

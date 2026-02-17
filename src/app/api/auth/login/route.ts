@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import ldap from 'ldapjs';
+import { captureSecurityEvents } from '@/services/securityEventCapture';
+import { logger } from '@/services/logger';
 
 const {
   LDAP_URL,
@@ -88,6 +90,7 @@ export async function POST(req: NextRequest) {
 
   const client = ldap.createClient({ url: LDAP_URL });
   const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const ipSource = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '0.0.0.0';
 
   console.info(`[LDAP ${requestId}] Connexion LDAP URL: ${LDAP_URL}`);
   console.info(`[LDAP ${requestId}] Base DN: ${LDAP_BASE_DN}`);
@@ -123,10 +126,25 @@ export async function POST(req: NextRequest) {
       maxAge: 60 * 60 * 8,
       path: '/',
     });
+
+    captureSecurityEvents.loginSuccess(displayName || identifier, ipSource, {
+      provider: 'ldap',
+      requestId,
+    });
+
+    logger.logUser('LOGIN', displayName || identifier, displayName || identifier, 'info', ipSource, {
+      provider: 'ldap',
+      requestId,
+    });
     return res;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR';
     console.error(`[LDAP ${requestId}] Error: ${message}`);
+
+    captureSecurityEvents.loginFailed(identifier, ipSource, message, {
+      provider: 'ldap',
+      requestId,
+    });
     return NextResponse.json(
       { ok: false, error: 'Identifiants invalides ou accès refusé.' },
       { status: 401 },

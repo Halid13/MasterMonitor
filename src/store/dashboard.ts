@@ -3,6 +3,34 @@
 import { create } from 'zustand';
 import { Equipment, User, Ticket, ServerStatus, Alert, IPAddress, Subnet, SystemLog, LogFilter } from '@/types';
 
+const getCookieValue = (name: string) => {
+  if (typeof document === 'undefined') return undefined;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : undefined;
+};
+
+const getCurrentUsername = () => getCookieValue('mm_user') || 'system';
+
+const postLog = (payload: {
+  category: 'action' | 'system' | 'user' | 'security';
+  level: 'info' | 'warning' | 'error' | 'critical';
+  module: string;
+  action: string;
+  objectImpacted: string;
+  username?: string;
+  oldValue?: string;
+  newValue?: string;
+  details?: Record<string, any>;
+}) => {
+  fetch('/api/logs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => {
+    // Ignore client logging errors
+  });
+};
+
 interface DashboardStore {
   // Equipment
   equipment: Equipment[];
@@ -71,87 +99,330 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
   equipment: [],
   setEquipment: (equipment) => set({ equipment }),
   addEquipment: (equipment) =>
-    set((state) => ({ equipment: [...state.equipment, equipment] })),
+    set((state) => {
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'Equipment',
+        action: 'create',
+        objectImpacted: equipment.id,
+        username: getCurrentUsername(),
+        newValue: JSON.stringify({ name: equipment.name, type: equipment.type }),
+      });
+      return { equipment: [...state.equipment, equipment] };
+    }),
   updateEquipment: (id, equipment) =>
-    set((state) => ({
-      equipment: state.equipment.map((e) => (e.id === id ? { ...e, ...equipment } : e)),
-    })),
+    set((state) => {
+      const previous = state.equipment.find((e) => e.id === id);
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'Equipment',
+        action: 'update',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ name: previous.name, type: previous.type }) : undefined,
+        newValue: JSON.stringify(equipment),
+      });
+      return {
+        equipment: state.equipment.map((e) => (e.id === id ? { ...e, ...equipment } : e)),
+      };
+    }),
   deleteEquipment: (id) =>
-    set((state) => ({ equipment: state.equipment.filter((e) => e.id !== id) })),
+    set((state) => {
+      const previous = state.equipment.find((e) => e.id === id);
+      postLog({
+        category: 'action',
+        level: 'warning',
+        module: 'Equipment',
+        action: 'delete',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ name: previous.name, type: previous.type }) : undefined,
+      });
+      return { equipment: state.equipment.filter((e) => e.id !== id) };
+    }),
 
   // Users
   users: [],
   setUsers: (users) => set({ users }),
   addUser: (user) =>
-    set((state) => ({ users: [...state.users, user] })),
+    set((state) => {
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'User',
+        action: 'create',
+        objectImpacted: user.id,
+        username: getCurrentUsername(),
+        newValue: JSON.stringify({ username: user.username, email: user.email, role: user.role }),
+      });
+      return { users: [...state.users, user] };
+    }),
   updateUser: (id, user) =>
-    set((state) => ({
-      users: state.users.map((u) => (u.id === id ? { ...u, ...user } : u)),
-    })),
+    set((state) => {
+      const previous = state.users.find((u) => u.id === id);
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'User',
+        action: 'update',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ username: previous.username, email: previous.email, role: previous.role }) : undefined,
+        newValue: JSON.stringify(user),
+      });
+      return {
+        users: state.users.map((u) => (u.id === id ? { ...u, ...user } : u)),
+      };
+    }),
   deleteUser: (id) =>
-    set((state) => ({ users: state.users.filter((u) => u.id !== id) })),
+    set((state) => {
+      const previous = state.users.find((u) => u.id === id);
+      postLog({
+        category: 'action',
+        level: 'warning',
+        module: 'User',
+        action: 'delete',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ username: previous.username, email: previous.email, role: previous.role }) : undefined,
+      });
+      return { users: state.users.filter((u) => u.id !== id) };
+    }),
 
   // Tickets
   tickets: [],
   setTickets: (tickets) => set({ tickets }),
   addTicket: (ticket) =>
-    set((state) => ({ tickets: [...state.tickets, ticket] })),
+    set((state) => {
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'Ticket',
+        action: 'create',
+        objectImpacted: ticket.id,
+        username: getCurrentUsername(),
+        newValue: JSON.stringify({ title: ticket.title, priority: ticket.priority, status: ticket.status }),
+      });
+      return { tickets: [...state.tickets, ticket] };
+    }),
   updateTicket: (id, ticket) =>
-    set((state) => ({
-      tickets: state.tickets.map((t) => (t.id === id ? { ...t, ...ticket } : t)),
-    })),
+    set((state) => {
+      const previous = state.tickets.find((t) => t.id === id);
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'Ticket',
+        action: 'update',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ title: previous.title, priority: previous.priority, status: previous.status }) : undefined,
+        newValue: JSON.stringify(ticket),
+      });
+      return {
+        tickets: state.tickets.map((t) => (t.id === id ? { ...t, ...ticket } : t)),
+      };
+    }),
   closeTicket: (id) =>
-    set((state) => ({
-      tickets: state.tickets.map((t) =>
-        t.id === id ? { ...t, status: 'closed' as const, resolvedAt: new Date() } : t,
-      ),
-    })),
+    set((state) => {
+      const previous = state.tickets.find((t) => t.id === id);
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'Ticket',
+        action: 'stop',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ status: previous.status }) : undefined,
+        newValue: JSON.stringify({ status: 'closed' }),
+      });
+      return {
+        tickets: state.tickets.map((t) =>
+          t.id === id ? { ...t, status: 'closed' as const, resolvedAt: new Date() } : t,
+        ),
+      };
+    }),
 
   // Server Status
   servers: [],
   setServers: (servers) => set({ servers }),
-  addServer: (server) => set((state) => ({ servers: [...state.servers, server] })),
-  deleteServer: (id) => set((state) => ({ servers: state.servers.filter((s) => s.id !== id) })),
+  addServer: (server) =>
+    set((state) => {
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'Server',
+        action: 'create',
+        objectImpacted: server.id,
+        username: getCurrentUsername(),
+        newValue: JSON.stringify({ name: server.name, ipAddress: server.ipAddress, status: server.status }),
+      });
+      return { servers: [...state.servers, server] };
+    }),
+  deleteServer: (id) =>
+    set((state) => {
+      const previous = state.servers.find((s) => s.id === id);
+      postLog({
+        category: 'action',
+        level: 'warning',
+        module: 'Server',
+        action: 'delete',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ name: previous.name, ipAddress: previous.ipAddress, status: previous.status }) : undefined,
+      });
+      return { servers: state.servers.filter((s) => s.id !== id) };
+    }),
   updateServerStatus: (id, status) =>
-    set((state) => ({
-      servers: state.servers.map((s) => (s.id === id ? { ...s, ...status } : s)),
-    })),
+    set((state) => {
+      const previous = state.servers.find((s) => s.id === id);
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'Server',
+        action: 'update',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ status: previous.status, healthScore: previous.healthScore }) : undefined,
+        newValue: JSON.stringify(status),
+      });
+      return {
+        servers: state.servers.map((s) => (s.id === id ? { ...s, ...status } : s)),
+      };
+    }),
 
   // Alerts
   alerts: [],
   setAlerts: (alerts) => set({ alerts }),
   addAlert: (alert) =>
-    set((state) => ({ alerts: [...state.alerts, alert] })),
+    set((state) => {
+      postLog({
+        category: 'action',
+        level: alert.type === 'critical' ? 'critical' : alert.type === 'error' ? 'error' : 'warning',
+        module: 'Alert',
+        action: 'create',
+        objectImpacted: alert.id,
+        username: getCurrentUsername(),
+        newValue: JSON.stringify({ title: alert.title, type: alert.type, source: alert.source }),
+      });
+      return { alerts: [...state.alerts, alert] };
+    }),
   resolveAlert: (id) =>
-    set((state) => ({
-      alerts: state.alerts.map((a) =>
-        a.id === id ? { ...a, isResolved: true, resolvedAt: new Date() } : a,
-      ),
-    })),
+    set((state) => {
+      const previous = state.alerts.find((a) => a.id === id);
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'Alert',
+        action: 'update',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ isResolved: previous.isResolved }) : undefined,
+        newValue: JSON.stringify({ isResolved: true }),
+      });
+      return {
+        alerts: state.alerts.map((a) =>
+          a.id === id ? { ...a, isResolved: true, resolvedAt: new Date() } : a,
+        ),
+      };
+    }),
 
   // IP Addresses
   ipAddresses: [],
   setIPAddresses: (ips) => set({ ipAddresses: ips }),
   addIPAddress: (ip) =>
-    set((state) => ({ ipAddresses: [...state.ipAddresses, ip] })),
+    set((state) => {
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'IPAddress',
+        action: 'create',
+        objectImpacted: ip.id,
+        username: getCurrentUsername(),
+        newValue: JSON.stringify({ address: ip.address, subnet: ip.subnet, assignedTo: ip.assignedTo }),
+      });
+      return { ipAddresses: [...state.ipAddresses, ip] };
+    }),
   updateIPAddress: (id, ip) =>
-    set((state) => ({
-      ipAddresses: state.ipAddresses.map((i) => (i.id === id ? { ...i, ...ip } : i)),
-    })),
+    set((state) => {
+      const previous = state.ipAddresses.find((i) => i.id === id);
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'IPAddress',
+        action: 'update',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ address: previous.address, subnet: previous.subnet, assignedTo: previous.assignedTo }) : undefined,
+        newValue: JSON.stringify(ip),
+      });
+      return {
+        ipAddresses: state.ipAddresses.map((i) => (i.id === id ? { ...i, ...ip } : i)),
+      };
+    }),
   deleteIPAddress: (id) =>
-    set((state) => ({ ipAddresses: state.ipAddresses.filter((i) => i.id !== id) })),
+    set((state) => {
+      const previous = state.ipAddresses.find((i) => i.id === id);
+      postLog({
+        category: 'action',
+        level: 'warning',
+        module: 'IPAddress',
+        action: 'delete',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ address: previous.address, subnet: previous.subnet, assignedTo: previous.assignedTo }) : undefined,
+      });
+      return { ipAddresses: state.ipAddresses.filter((i) => i.id !== id) };
+    }),
 
   // Subnets
   subnets: [],
   setSubnets: (subnets) => set({ subnets }),
   addSubnet: (subnet) =>
-    set((state) => ({ subnets: [...state.subnets, subnet] })),
+    set((state) => {
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'Subnet',
+        action: 'create',
+        objectImpacted: subnet.id,
+        username: getCurrentUsername(),
+        newValue: JSON.stringify({ name: subnet.name, subnetCidr: subnet.subnetCidr, rangeStart: subnet.rangeStart, rangeEnd: subnet.rangeEnd }),
+      });
+      return { subnets: [...state.subnets, subnet] };
+    }),
   updateSubnet: (id, subnet) =>
-    set((state) => ({
-      subnets: state.subnets.map((s) => (s.id === id ? { ...s, ...subnet } : s)),
-    })),
+    set((state) => {
+      const previous = state.subnets.find((s) => s.id === id);
+      postLog({
+        category: 'action',
+        level: 'info',
+        module: 'Subnet',
+        action: 'update',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ name: previous.name, subnetCidr: previous.subnetCidr, rangeStart: previous.rangeStart, rangeEnd: previous.rangeEnd }) : undefined,
+        newValue: JSON.stringify(subnet),
+      });
+      return {
+        subnets: state.subnets.map((s) => (s.id === id ? { ...s, ...subnet } : s)),
+      };
+    }),
   deleteSubnet: (id) =>
-    set((state) => ({ subnets: state.subnets.filter((s) => s.id !== id) })),
+    set((state) => {
+      const previous = state.subnets.find((s) => s.id === id);
+      postLog({
+        category: 'action',
+        level: 'warning',
+        module: 'Subnet',
+        action: 'delete',
+        objectImpacted: id,
+        username: getCurrentUsername(),
+        oldValue: previous ? JSON.stringify({ name: previous.name, subnetCidr: previous.subnetCidr, rangeStart: previous.rangeStart, rangeEnd: previous.rangeEnd }) : undefined,
+      });
+      return { subnets: state.subnets.filter((s) => s.id !== id) };
+    }),
 
   // Filter and Search
   searchQuery: '',
