@@ -2,7 +2,7 @@
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { SystemLog, LogCategory, LogLevel } from '@/types';
-import { Activity, AlertTriangle, TrendingUp, Shield, Download, Trash2, Filter, Search, BarChart3 } from 'lucide-react';
+import { Activity, AlertTriangle, TrendingUp, Shield, Download, Trash2, Filter, Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 export default function LogsPage() {
@@ -196,6 +196,24 @@ export default function LogsPage() {
     action: '📝',
     security: '🔒',
   };
+  const categoryLabels = {
+    system: 'Système',
+    user: 'Utilisateur',
+    action: 'Action',
+    security: 'Sécurité',
+  };
+  const categoryPills = {
+    system: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+    user: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+    action: 'bg-purple-50 text-purple-700 border-purple-200',
+    security: 'bg-red-50 text-red-700 border-red-200',
+  };
+  const categoryDots = {
+    system: 'bg-cyan-500',
+    user: 'bg-yellow-500',
+    action: 'bg-purple-500',
+    security: 'bg-red-500',
+  };
 
 
   return (
@@ -207,27 +225,7 @@ export default function LogsPage() {
             <h1 className="text-3xl font-bold text-gray-900">Gestion des logs</h1>
             <p className="text-gray-600 mt-2">Centralisez et consultez tous les journaux système, utilisateurs, actions et sécurité</p>
           </div>
-          <div className="flex gap-2">
-            <a
-              href="/logs/test"
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition"
-            >
-              🧪 Test Logs
-            </a>
-            <a
-              href="/logs/stats"
-              className="px-4 py-2 rounded-lg bg-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-300 transition"
-            >
-              <BarChart3 className="w-4 h-4 inline mr-1" />
-              Statistiques
-            </a>
-            <a
-              href="/logs/integration-guide"
-              className="px-4 py-2 rounded-lg bg-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-300 transition"
-            >
-              📚 Intégration
-            </a>
-          </div>
+          <div />
         </div>
 
         {/* Quick Stats */}
@@ -547,7 +545,16 @@ export default function LogsPage() {
         </div>
 
         {/* Logs Table */}
-        <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm overflow-hidden">
+        <div className="rounded-2xl bg-white/90 backdrop-blur-sm border border-slate-200/60 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200/60 bg-gradient-to-r from-slate-50 via-white to-slate-50">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Journal des logs</h3>
+                <p className="text-[11px] text-slate-500">Vue tabulaire moderne et lisible</p>
+              </div>
+              <span className="text-[11px] text-slate-500">{stats.total} entrées</span>
+            </div>
+          </div>
           {loading ? (
             <div className="p-8 text-center">
               <p className="text-slate-600">Chargement des logs...</p>
@@ -561,36 +568,46 @@ export default function LogsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Date</th>
-                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Cat.</th>
-                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Niveau</th>
-                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Module</th>
-                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Action</th>
-                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Objet</th>
-                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Utilisateur</th>
-                      <th className="px-4 py-2 text-left font-semibold text-slate-900">IP</th>
+                    <tr className="text-[11px] uppercase tracking-wider text-slate-500">
+                      <th className="px-5 py-3 text-left">Date</th>
+                      <th className="px-5 py-3 text-left">Catégorie</th>
+                      <th className="px-5 py-3 text-left">Niveau</th>
+                      <th className="px-5 py-3 text-left">Module</th>
+                      <th className="px-5 py-3 text-left">Action</th>
+                      <th className="px-5 py-3 text-left">Objet</th>
+                      <th className="px-5 py-3 text-left">Utilisateur</th>
+                      <th className="px-5 py-3 text-left">IP</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {logs.map((log) => (
-                      <tr key={log.id} className="border-b border-slate-200 hover:bg-slate-50">
-                        <td className="px-4 py-2 text-xs text-slate-600">
+                  <tbody className="divide-y divide-slate-200">
+                    {logs.map((log, index) => (
+                      <tr
+                        key={log.id}
+                        className={`group hover:bg-slate-50 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}
+                      >
+                        <td className="px-5 py-3 text-xs text-slate-500">
                           {new Date(log.timestamp).toLocaleString('fr-FR')}
                         </td>
-                        <td className="px-4 py-2 text-xs">
-                          <span className="text-lg">{categoryIcons[log.category] || '📋'}</span>
+                        <td className="px-5 py-3 text-xs">
+                          <span className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full border ${categoryPills[log.category] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                            <span className={`h-2 w-2 rounded-full ${categoryDots[log.category] || 'bg-slate-400'}`} />
+                            <span className="font-semibold">{categoryLabels[log.category] || 'Autre'}</span>
+                          </span>
                         </td>
-                        <td className="px-4 py-2">
-                          <span className={`text-xs px-2 py-0.5 rounded border ${levelColors[log.level]}`}>
+                        <td className="px-5 py-3">
+                          <span className={`text-xs px-2.5 py-1 rounded-full border ${levelColors[log.level]}`}>
                             {log.level}
                           </span>
                         </td>
-                        <td className="px-4 py-2 text-xs font-medium text-slate-900">{log.module}</td>
-                        <td className="px-4 py-2 text-xs text-slate-700">{log.action}</td>
-                        <td className="px-4 py-2 text-xs text-slate-700 max-w-xs truncate">{log.objectImpacted}</td>
-                        <td className="px-4 py-2 text-xs text-slate-600">{log.username || 'N/A'}</td>
-                        <td className="px-4 py-2 text-xs text-slate-600 font-mono">{log.ipSource || 'N/A'}</td>
+                        <td className="px-5 py-3 text-xs font-medium text-slate-900">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            {log.module}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-xs text-slate-700">{log.action}</td>
+                        <td className="px-5 py-3 text-xs text-slate-700 max-w-xs truncate">{log.objectImpacted}</td>
+                        <td className="px-5 py-3 text-xs text-slate-600">{log.username || 'N/A'}</td>
+                        <td className="px-5 py-3 text-xs text-slate-600 font-mono">{log.ipSource || 'N/A'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -598,7 +615,7 @@ export default function LogsPage() {
               </div>
 
               {/* Pagination */}
-              <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-t border-slate-200">
+              <div className="flex items-center justify-between px-4 py-3 bg-slate-50/80 border-t border-slate-200/60">
                 <span className="text-xs text-slate-600">
                   Page {page} sur {totalPages} ({stats.total} total)
                 </span>
