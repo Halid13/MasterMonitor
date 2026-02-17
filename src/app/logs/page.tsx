@@ -2,7 +2,7 @@
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { SystemLog, LogCategory, LogLevel } from '@/types';
-import { Download, Trash2, Filter, Search, AlertCircle, CheckCircle, BarChart3 } from 'lucide-react';
+import { Activity, AlertTriangle, TrendingUp, Shield, Download, Trash2, Filter, Search, BarChart3 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 export default function LogsPage() {
@@ -171,7 +171,13 @@ export default function LogsPage() {
     security: logs.filter((l) => l.category === 'security').length,
     critical: logs.filter((l) => l.level === 'critical').length,
     error: logs.filter((l) => l.level === 'error').length,
+    warning: logs.filter((l) => l.level === 'warning').length,
   };
+
+  const systemPercent = stats.total > 0 ? Number(((stats.system / stats.total) * 100).toFixed(1)) : 0;
+  const userPercent = stats.total > 0 ? Number(((stats.user / stats.total) * 100).toFixed(1)) : 0;
+  const actionPercent = stats.total > 0 ? Number(((stats.action / stats.total) * 100).toFixed(1)) : 0;
+  const securityPercent = stats.total > 0 ? Number(((stats.security / stats.total) * 100).toFixed(1)) : 0;
 
   // Get unique modules and users
   const modules = [...new Set(logs.map((l) => l.module))];
@@ -196,28 +202,28 @@ export default function LogsPage() {
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex-1">
-            <h1 className="text-4xl font-bold text-gray-900">Gestion des logs</h1>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Gestion des logs</h1>
             <p className="text-gray-600 mt-2">Centralisez et consultez tous les journaux système, utilisateurs, actions et sécurité</p>
           </div>
           <div className="flex gap-2">
             <a
               href="/logs/test"
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium text-sm transition-colors"
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition"
             >
               🧪 Test Logs
             </a>
             <a
               href="/logs/stats"
-              className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium text-sm transition-colors"
+              className="px-4 py-2 rounded-lg bg-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-300 transition"
             >
               <BarChart3 className="w-4 h-4 inline mr-1" />
               Statistiques
             </a>
             <a
               href="/logs/integration-guide"
-              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-medium text-sm transition-colors"
+              className="px-4 py-2 rounded-lg bg-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-300 transition"
             >
               📚 Intégration
             </a>
@@ -225,54 +231,204 @@ export default function LogsPage() {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
-            <p className="text-xs text-gray-600">Total</p>
-            <p className="text-2xl font-bold text-blue-600">{stats.total}</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-3 border-l-4 border-blue-500">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-slate-600 font-semibold text-sm">Total des Logs</h3>
+              <Activity className="w-4 h-4 text-blue-600" />
+            </div>
+            <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
+            <p className="text-[10px] text-slate-500 mt-1">Tous les logs</p>
           </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
-            <p className="text-xs text-gray-600">Système</p>
-            <p className="text-2xl font-bold text-gray-600">{stats.system}</p>
+
+          <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-3 border-l-4 border-red-500">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-slate-600 font-semibold text-sm">Événements Critiques</h3>
+              <AlertTriangle className="w-4 h-4 text-red-600" />
+            </div>
+            <div className="text-2xl font-bold text-red-600">{stats.critical}</div>
+            <p className="text-[10px] text-slate-500 mt-1">Urgent</p>
           </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
-            <p className="text-xs text-gray-600">Utilisateur</p>
-            <p className="text-2xl font-bold text-gray-600">{stats.user}</p>
+
+          <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-3 border-l-4 border-yellow-500">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-slate-600 font-semibold text-sm">Erreurs</h3>
+              <TrendingUp className="w-4 h-4 text-yellow-600" />
+            </div>
+            <div className="text-2xl font-bold text-yellow-600">{stats.error}</div>
+            <p className="text-[10px] text-slate-500 mt-1">À surveiller</p>
           </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
-            <p className="text-xs text-gray-600">Action</p>
-            <p className="text-2xl font-bold text-gray-600">{stats.action}</p>
+
+          <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-3 border-l-4 border-orange-500">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-slate-600 font-semibold text-sm">Avertissements</h3>
+              <Shield className="w-4 h-4 text-orange-600" />
+            </div>
+            <div className="text-2xl font-bold text-orange-600">{stats.warning}</div>
+            <p className="text-[10px] text-slate-500 mt-1">À surveiller</p>
           </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
-            <p className="text-xs text-gray-600">Sécurité</p>
-            <p className="text-2xl font-bold text-purple-600">{stats.security}</p>
+        </div>
+
+        {/* Répartition par Catégorie */}
+        <div className="rounded-xl bg-gradient-to-br from-white/80 via-white/70 to-slate-50/80 backdrop-blur-sm border border-slate-200/40 shadow-sm p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Répartition par Catégorie</h2>
+              <p className="text-xs text-slate-500">Vue synthétique par catégorie</p>
+            </div>
+            <span className="text-[11px] text-slate-500">Total: {stats.total}</span>
           </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
-            <p className="text-xs text-gray-600">Erreurs</p>
-            <p className="text-2xl font-bold text-red-600">{stats.error}</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="rounded-lg border border-slate-200/60 bg-white/80 p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">⚙️</span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Système</p>
+                    <p className="text-[11px] text-slate-500">Métriques, health checks</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-base font-bold text-cyan-600">{stats.system}</p>
+                  <p className="text-[11px] text-slate-500">{systemPercent}%</p>
+                </div>
+              </div>
+              <div className="mt-2 w-full bg-slate-200 rounded-full h-1.5">
+                <div className="bg-cyan-500 h-1.5 rounded-full transition-all" style={{ width: `${systemPercent}%` }} />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200/60 bg-white/80 p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">👤</span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Utilisateur</p>
+                    <p className="text-[11px] text-slate-500">Sessions, authentification</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-base font-bold text-yellow-600">{stats.user}</p>
+                  <p className="text-[11px] text-slate-500">{userPercent}%</p>
+                </div>
+              </div>
+              <div className="mt-2 w-full bg-slate-200 rounded-full h-1.5">
+                <div className="bg-yellow-500 h-1.5 rounded-full transition-all" style={{ width: `${userPercent}%` }} />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200/60 bg-white/80 p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📝</span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Action</p>
+                    <p className="text-[11px] text-slate-500">CRUD serveurs, tickets</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-base font-bold text-purple-600">{stats.action}</p>
+                  <p className="text-[11px] text-slate-500">{actionPercent}%</p>
+                </div>
+              </div>
+              <div className="mt-2 w-full bg-slate-200 rounded-full h-1.5">
+                <div className="bg-purple-500 h-1.5 rounded-full transition-all" style={{ width: `${actionPercent}%` }} />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200/60 bg-white/80 p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🔒</span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Sécurité</p>
+                    <p className="text-[11px] text-slate-500">Accès, anomalies</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-base font-bold text-red-600">{stats.security}</p>
+                  <p className="text-[11px] text-slate-500">{securityPercent}%</p>
+                </div>
+              </div>
+              <div className="mt-2 w-full bg-slate-200 rounded-full h-1.5">
+                <div className="bg-red-500 h-1.5 rounded-full transition-all" style={{ width: `${securityPercent}%` }} />
+              </div>
+            </div>
           </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
-            <p className="text-xs text-gray-600">Critique</p>
-            <p className="text-2xl font-bold text-red-700">{stats.critical}</p>
+        </div>
+
+        {/* Distribution par Sévérité */}
+        <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-3">
+          <h3 className="text-base font-bold text-slate-900 mb-2">Distribution par Sévérité</h3>
+          <div className="space-y-4">
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-sm font-medium text-red-700">🔴 Critique</span>
+                <span className="text-sm font-bold text-red-700">{stats.critical}</span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-3">
+                <div
+                  className="bg-red-600 h-3 rounded-full transition-all"
+                  style={{ width: `${stats.total > 0 ? (stats.critical / stats.total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-sm font-medium text-orange-700">🟠 Erreur</span>
+                <span className="text-sm font-bold text-orange-700">{stats.error}</span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-3">
+                <div
+                  className="bg-orange-500 h-3 rounded-full transition-all"
+                  style={{ width: `${stats.total > 0 ? (stats.error / stats.total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-sm font-medium text-yellow-700">🟡 Avertissement</span>
+                <span className="text-sm font-bold text-yellow-700">{stats.warning}</span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-3">
+                <div
+                  className="bg-yellow-500 h-3 rounded-full transition-all"
+                  style={{ width: `${stats.total > 0 ? (stats.warning / stats.total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-200 mt-4">
+              <p className="text-xs text-slate-600">
+                Santé du système: <span className="font-bold text-green-600">✅ Bon</span>
+              </p>
+              <p className="text-xs text-slate-600 mt-1">
+                Dernière mise à jour: <span className="font-mono">{new Date().toLocaleTimeString()}</span>
+              </p>
+            </div>
           </div>
         </div>
 
 
         {/* Filters & Export */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+        <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <Filter size={18} /> Filtres et recherche
             </h2>
             <div className="flex gap-2">
               <button
                 onClick={handleExport}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-green-100 text-green-700 text-sm font-medium hover:bg-green-200"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-200 text-slate-900 text-sm font-medium hover:bg-slate-300"
               >
                 <Download size={16} /> Export CSV
               </button>
               <button
                 onClick={handlePurge}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-red-100 text-red-700 text-sm font-medium hover:bg-red-200"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-200 text-slate-900 text-sm font-medium hover:bg-slate-300"
               >
                 <Trash2 size={16} /> Purger
               </button>
@@ -282,11 +438,11 @@ export default function LogsPage() {
           {/* Filter Inputs */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
-              <label className="text-xs font-medium text-gray-700 mb-1 block">Catégorie</label>
+              <label className="text-xs font-medium text-slate-700 mb-1 block">Catégorie</label>
               <select
                 value={filterCategory}
                 onChange={(e) => { setFilterCategory(e.target.value as any); setPage(1); }}
-                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Toutes</option>
                 <option value="system">Système</option>
@@ -296,11 +452,11 @@ export default function LogsPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-700 mb-1 block">Niveau</label>
+              <label className="text-xs font-medium text-slate-700 mb-1 block">Niveau</label>
               <select
                 value={filterLevel}
                 onChange={(e) => { setFilterLevel(e.target.value as any); setPage(1); }}
-                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Tous</option>
                 <option value="info">Info</option>
@@ -310,11 +466,11 @@ export default function LogsPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-700 mb-1 block">Module</label>
+              <label className="text-xs font-medium text-slate-700 mb-1 block">Module</label>
               <select
                 value={filterModule}
                 onChange={(e) => { setFilterModule(e.target.value); setPage(1); }}
-                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Tous</option>
                 {modules.map((m) => (
@@ -325,11 +481,11 @@ export default function LogsPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-700 mb-1 block">Utilisateur</label>
+              <label className="text-xs font-medium text-slate-700 mb-1 block">Utilisateur</label>
               <select
                 value={filterUsername}
                 onChange={(e) => { setFilterUsername(e.target.value); setPage(1); }}
-                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Tous</option>
                 {users.map((u) => (
@@ -340,12 +496,12 @@ export default function LogsPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-700 mb-1 block">Jours à conserver</label>
+              <label className="text-xs font-medium text-slate-700 mb-1 block">Jours à conserver</label>
               <input
                 type="number"
                 value={purgedays}
                 onChange={(e) => setPurgeDays(parseInt(e.target.value))}
-                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min="1"
               />
             </div>
@@ -353,50 +509,50 @@ export default function LogsPage() {
 
           {/* Search */}
           <div>
-            <label className="text-xs font-medium text-gray-700 mb-1 block">Recherche (action, objet, module)</label>
+            <label className="text-xs font-medium text-slate-700 mb-1 block">Recherche (action, objet, module)</label>
             <div className="relative">
-              <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
+              <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
               <input
                 type="text"
                 placeholder="Chercher..."
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-                className="w-full rounded-md border border-gray-300 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-slate-300 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
         </div>
 
         {/* Logs Table */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="rounded-xl bg-white/70 backdrop-blur-sm border border-slate-200/40 shadow-sm overflow-hidden">
           {loading ? (
             <div className="p-8 text-center">
-              <p className="text-gray-600">Chargement des logs...</p>
+              <p className="text-slate-600">Chargement des logs...</p>
             </div>
           ) : logs.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-gray-600">Aucun log disponible</p>
+              <p className="text-slate-600">Aucun log disponible</p>
             </div>
           ) : (
             <>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-900">Date</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-900">Cat.</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-900">Niveau</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-900">Module</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-900">Action</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-900">Objet</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-900">Utilisateur</th>
-                      <th className="px-4 py-2 text-left font-semibold text-gray-900">IP</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Date</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Cat.</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Niveau</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Module</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Action</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Objet</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-900">Utilisateur</th>
+                      <th className="px-4 py-2 text-left font-semibold text-slate-900">IP</th>
                     </tr>
                   </thead>
                   <tbody>
                     {logs.map((log) => (
-                      <tr key={log.id} className="border-b border-gray-200 hover:bg-gray-50">
-                        <td className="px-4 py-2 text-xs text-gray-600">
+                      <tr key={log.id} className="border-b border-slate-200 hover:bg-slate-50">
+                        <td className="px-4 py-2 text-xs text-slate-600">
                           {new Date(log.timestamp).toLocaleString('fr-FR')}
                         </td>
                         <td className="px-4 py-2 text-xs">
@@ -407,11 +563,11 @@ export default function LogsPage() {
                             {log.level}
                           </span>
                         </td>
-                        <td className="px-4 py-2 text-xs font-medium text-gray-900">{log.module}</td>
-                        <td className="px-4 py-2 text-xs text-gray-700">{log.action}</td>
-                        <td className="px-4 py-2 text-xs text-gray-700 max-w-xs truncate">{log.objectImpacted}</td>
-                        <td className="px-4 py-2 text-xs text-gray-600">{log.username || 'N/A'}</td>
-                        <td className="px-4 py-2 text-xs text-gray-600 font-mono">{log.ipSource || 'N/A'}</td>
+                        <td className="px-4 py-2 text-xs font-medium text-slate-900">{log.module}</td>
+                        <td className="px-4 py-2 text-xs text-slate-700">{log.action}</td>
+                        <td className="px-4 py-2 text-xs text-slate-700 max-w-xs truncate">{log.objectImpacted}</td>
+                        <td className="px-4 py-2 text-xs text-slate-600">{log.username || 'N/A'}</td>
+                        <td className="px-4 py-2 text-xs text-slate-600 font-mono">{log.ipSource || 'N/A'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -419,22 +575,22 @@ export default function LogsPage() {
               </div>
 
               {/* Pagination */}
-              <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-200">
-                <span className="text-xs text-gray-600">
+              <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-t border-slate-200">
+                <span className="text-xs text-slate-600">
                   Page {page} sur {totalPages} ({stats.total} total)
                 </span>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setPage(Math.max(1, page - 1))}
                     disabled={page === 1}
-                    className="px-3 py-1 rounded-md bg-gray-200 text-gray-700 text-sm font-medium disabled:opacity-50"
+                    className="px-3 py-1 rounded-md bg-slate-200 text-slate-900 text-sm font-medium disabled:opacity-50"
                   >
                     Précédent
                   </button>
                   <button
                     onClick={() => setPage(Math.min(totalPages, page + 1))}
                     disabled={page === totalPages}
-                    className="px-3 py-1 rounded-md bg-gray-200 text-gray-700 text-sm font-medium disabled:opacity-50"
+                    className="px-3 py-1 rounded-md bg-slate-200 text-slate-900 text-sm font-medium disabled:opacity-50"
                   >
                     Suivant
                   </button>
