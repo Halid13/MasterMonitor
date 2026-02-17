@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Menu, X, Bell, LogOut, Settings, Search, Home, Zap, Users, Globe, Cpu, Ticket } from 'lucide-react';
+import { Menu, X, Bell, LogOut, Settings, Search, Home, Zap, Users, Globe, Cpu, Ticket, FileText } from 'lucide-react';
 
 interface LayoutProps {
   children: ReactNode;
@@ -48,6 +48,7 @@ export const MainLayout = ({ children }: LayoutProps) => {
     { href: '/ip-addresses', label: 'Sous-réseaux', icon: Globe, color: 'from-orange-500 to-red-500' },
     { href: '/servers', label: 'Serveurs', icon: Zap, color: 'from-yellow-500 to-orange-500' },
     { href: '/tickets', label: 'Tickets', icon: Ticket, color: 'from-pink-500 to-rose-500' },
+    { href: '/logs', label: 'Logs', icon: FileText, color: 'from-indigo-500 to-blue-500' },
   ];
 
   return (

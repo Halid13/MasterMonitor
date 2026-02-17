@@ -145,3 +145,44 @@ export interface DashboardStats {
   ipUtilization: number;
   activeAlerts: number;
 }
+
+// Types pour la gestion des logs
+export type LogCategory = 'system' | 'user' | 'action' | 'security';
+export type LogLevel = 'info' | 'warning' | 'error' | 'critical';
+
+export interface SystemLog {
+  id: string;
+  timestamp: Date;
+  category: LogCategory;
+  level: LogLevel;
+  username?: string;
+  module: string;
+  action: string;
+  objectImpacted: string;
+  oldValue?: string;
+  newValue?: string;
+  ipSource?: string;
+  details?: Record<string, any>;
+  resolved?: boolean;
+}
+
+export interface LogFilter {
+  category?: LogCategory;
+  level?: LogLevel;
+  module?: string;
+  username?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+  searchQuery?: string;
+}
+
+export interface LogStats {
+  totalLogs: number;
+  systemLogs: number;
+  userLogs: number;
+  actionLogs: number;
+  securityLogs: number;
+  criticalCount: number;
+  errorCount: number;
+  lastLogTime?: Date;
+}

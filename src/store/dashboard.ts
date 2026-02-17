@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import { Equipment, User, Ticket, ServerStatus, Alert, IPAddress, Subnet } from '@/types';
+import { Equipment, User, Ticket, ServerStatus, Alert, IPAddress, Subnet, SystemLog, LogFilter } from '@/types';
 
 interface DashboardStore {
   // Equipment
@@ -57,6 +57,13 @@ interface DashboardStore {
   setSearchQuery: (query: string) => void;
   filterCategory: string;
   setFilterCategory: (category: string) => void;
+
+  // Logs
+  logs: SystemLog[];
+  setLogs: (logs: SystemLog[]) => void;
+  addLog: (log: SystemLog) => void;
+  clearLogs: () => void;
+  searchLogs: (filter: LogFilter) => SystemLog[];
 }
 
 export const useDashboardStore = create<DashboardStore>((set) => ({
@@ -151,4 +158,14 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
   setSearchQuery: (query) => set({ searchQuery: query }),
   filterCategory: '',
   setFilterCategory: (category) => set({ filterCategory: category }),
+
+  // Logs
+  logs: [],
+  setLogs: (logs) => set({ logs }),
+  addLog: (log) =>
+    set((state) => ({ logs: [log, ...state.logs].slice(0, 10000) })), // Keep last 10k logs
+  clearLogs: () => set({ logs: [] }),
+  searchLogs: (filter: LogFilter) => {
+    return new Set<SystemLog>([]).size; // Will be implemented in component
+  },
 }));
