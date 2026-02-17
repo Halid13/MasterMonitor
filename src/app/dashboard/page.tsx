@@ -119,6 +119,13 @@ export default function Dashboard() {
   };
 
   const healthScore = getHealthScore();
+  const onlineCount = servers.filter((s) => s.status === 'online').length;
+  const availability = servers.length > 0
+    ? Math.round((onlineCount / servers.length) * 100)
+    : 0;
+  const resolvedTicketRate = stats && stats.totalTickets > 0
+    ? Math.round(((stats.totalTickets - stats.openTickets) / stats.totalTickets) * 100)
+    : 0;
 
   if (loading) {
     return (
@@ -272,29 +279,41 @@ export default function Dashboard() {
           </div>
 
           <div className="rounded-2xl bg-gradient-to-br from-purple-50/80 via-white/60 to-purple-50/40 backdrop-blur-sm border border-purple-200/40 p-6 shadow-sm">
-            <h3 className="font-bold text-slate-900 text-sm mb-4">Allocation IPs</h3>
+            <h3 className="font-bold text-slate-900 text-sm mb-4">Disponibilité serveurs</h3>
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs text-slate-600">En ligne</span>
+                <span className="font-bold text-2xl text-purple-600">{availability}%</span>
+              </div>
+              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-purple-400 to-purple-500"
+                  style={{ width: `${availability}%` }}
+                />
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                {onlineCount} en ligne sur {servers.length}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-gradient-to-br from-emerald-50/80 via-white/60 to-emerald-50/40 backdrop-blur-sm border border-emerald-200/40 p-6 shadow-sm">
+            <h3 className="font-bold text-slate-900 text-sm mb-4">Taux de résolution</h3>
             {stats && (
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs text-slate-600">Utilisation</span>
-                  <span className="font-bold text-2xl text-purple-600">{stats.ipUtilization}%</span>
+                  <span className="text-xs text-slate-600">Résolus</span>
+                  <span className="font-bold text-2xl text-emerald-600">{resolvedTicketRate}%</span>
                 </div>
                 <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-purple-400 to-purple-500"
-                    style={{ width: `${stats.ipUtilization}%` }}
+                    className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500"
+                    style={{ width: `${resolvedTicketRate}%` }}
                   />
                 </div>
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-2xl bg-gradient-to-br from-red-50/80 via-white/60 to-red-50/40 backdrop-blur-sm border border-red-200/40 p-6 shadow-sm">
-            <h3 className="font-bold text-slate-900 text-sm mb-4">Alertes</h3>
-            {stats && (
-              <div>
-                <p className="text-3xl font-bold text-red-600 mb-1">{stats.activeAlerts}</p>
-                <p className="text-xs text-slate-600">Alertes actives</p>
+                <p className="text-xs text-slate-500 mt-2">
+                  {stats.totalTickets - stats.openTickets} résolus sur {stats.totalTickets}
+                </p>
               </div>
             )}
           </div>
