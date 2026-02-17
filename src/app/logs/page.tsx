@@ -2,7 +2,7 @@
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { SystemLog, LogCategory, LogLevel } from '@/types';
-import { Activity, AlertTriangle, TrendingUp, Shield, Download, Trash2, Filter, Search } from 'lucide-react';
+import { Activity, AlertTriangle, TrendingUp, Shield, Download, Trash2, Filter, Search, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 export default function LogsPage() {
@@ -16,6 +16,10 @@ export default function LogsPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [purgedays, setPurgeDays] = useState(30);
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [purgeLoading, setPurgeLoading] = useState(false);
+  const [purgeMessage, setPurgeMessage] = useState('');
+  const [selectedLog, setSelectedLog] = useState<SystemLog | null>(null);
 
   const itemsPerPage = 50;
   const logsRef = useRef<SystemLog[]>([]);
@@ -141,25 +145,26 @@ export default function LogsPage() {
   };
 
   // Handle purge
-  const handlePurge = async () => {
+  const confirmPurge = async () => {
     const days = Number(purgedays);
     if (!Number.isFinite(days) || days < 1) {
-      alert('Veuillez saisir un nombre de jours valide.');
+      setPurgeMessage('Veuillez saisir un nombre de jours valide.');
       return;
     }
-    if (!window.confirm(`Supprimer les logs plus anciens que ${days} jours ?`)) return;
 
+    setPurgeLoading(true);
+    setPurgeMessage('');
     try {
       const res = await fetch(`/api/logs?action=purge-old&days=${days}`, {
         method: 'DELETE',
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        alert(data?.error || 'Échec de la purge des logs.');
+        setPurgeMessage(data?.error || 'Échec de la purge des logs.');
         return;
       }
 
-      alert(`${data.removed} anciens logs supprimés`);
+      setPurgeMessage(`${data.removed} anciens logs supprimés avec succès.`);
       setPage(1);
 
       const params = new URLSearchParams();
@@ -177,9 +182,16 @@ export default function LogsPage() {
         setLogs(logsData.logs);
         setTotalPages(logsData.pages);
       }
+
+      setTimeout(() => {
+        setShowPurgeModal(false);
+        setPurgeMessage('');
+      }, 1500);
     } catch (error) {
       console.error('Purge failed:', error);
-      alert('Erreur réseau lors de la purge des logs.');
+      setPurgeMessage('Erreur réseau lors de la purge des logs.');
+    } finally {
+      setPurgeLoading(false);
     }
   };
 
@@ -471,7 +483,7 @@ export default function LogsPage() {
                 <Download size={16} /> Export CSV
               </button>
               <button
-                onClick={handlePurge}
+                onClick={() => setShowPurgeModal(true)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-500/10 text-rose-700 text-sm font-semibold hover:bg-rose-500/20 ring-1 ring-rose-400/30"
               >
                 <Trash2 size={16} /> Purger
@@ -601,6 +613,7 @@ export default function LogsPage() {
                       <th className="px-5 py-3 text-left">Objet</th>
                       <th className="px-5 py-3 text-left">Utilisateur</th>
                       <th className="px-5 py-3 text-left">IP</th>
+                      <th className="px-5 py-3 text-left">Détails</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -632,6 +645,14 @@ export default function LogsPage() {
                         <td className="px-5 py-3 text-xs text-slate-700 max-w-xs truncate">{log.objectImpacted}</td>
                         <td className="px-5 py-3 text-xs text-slate-600">{log.username || 'N/A'}</td>
                         <td className="px-5 py-3 text-xs text-slate-600 font-mono">{log.ipSource || 'N/A'}</td>
+                        <td className="px-5 py-3 text-xs">
+                          <button
+                            onClick={() => setSelectedLog(log)}
+                            className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-semibold text-xs transition"
+                          >
+                            Voir
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -663,6 +684,183 @@ export default function LogsPage() {
             </>
           )}
         </div>
+
+        {/* Purge Modal */}
+        {showPurgeModal && (
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200/60 p-6 w-full max-w-md mx-4">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="h-10 w-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0">
+                  <Trash2 size={20} />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-slate-900">Purger les anciens logs</h3>
+                  <p className="text-sm text-slate-600 mt-1">Supprimez les logs datant de plus de</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl p-4 mb-4">
+                <label className="text-sm font-semibold text-slate-700 mb-2 block">Nombre de jours à conserver</label>
+                <input
+                  type="number"
+                  value={purgedays}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setPurgeDays(Number.isFinite(next) && next > 0 ? next : 1);
+                  }}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  min="1"
+                />
+                <p className="text-xs text-slate-500 mt-2">Les logs antérieurs à {purgedays} jours seront supprimés de manière définitive.</p>
+              </div>
+
+              {purgeMessage && (
+                <div className={`p-3 rounded-lg mb-4 text-sm ${purgeMessage.includes('succès') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  {purgeMessage}
+                </div>
+              )}
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => {
+                    setShowPurgeModal(false);
+                    setPurgeMessage('');
+                  }}
+                  disabled={purgeLoading}
+                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200 disabled:opacity-50"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={confirmPurge}
+                  disabled={purgeLoading}
+                  className="px-4 py-2 rounded-lg bg-rose-500 text-white font-semibold hover:bg-rose-600 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {purgeLoading ? (
+                    <>
+                      <span className="animate-spin">⏳</span> Purge en cours...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={16} /> Supprimer
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Log Details Modal */}
+        {selectedLog && (
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200/60 p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">Détails du log</h3>
+                  <p className="text-xs text-slate-500 mt-1">ID: {selectedLog.id}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedLog(null)}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition"
+                >
+                  <X size={20} className="text-slate-600" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Header Info */}
+                <div className="grid grid-cols-2 gap-4 pb-4 border-b border-slate-200">
+                  <div>
+                    <p className="text-xs text-slate-500 mb-1">Date/Heure</p>
+                    <p className="font-semibold text-slate-900">{new Date(selectedLog.timestamp).toLocaleString('fr-FR')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 mb-1">Catégorie</p>
+                    <span className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full border ${categoryPills[selectedLog.category] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                      <span className={`h-2 w-2 rounded-full ${categoryDots[selectedLog.category] || 'bg-slate-400'}`} />
+                      <span className="font-semibold text-xs">{categoryLabels[selectedLog.category] || 'Autre'}</span>
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 mb-1">Niveau</p>
+                    <span className={`text-xs px-2.5 py-1 rounded-full border inline-block ${levelColors[selectedLog.level]}`}>
+                      {selectedLog.level}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 mb-1">Module</p>
+                    <p className="font-semibold text-slate-900">{selectedLog.module}</p>
+                  </div>
+                </div>
+
+                {/* Main Content */}
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs text-slate-500 mb-1">Action</p>
+                    <p className="text-sm font-medium text-slate-900">{selectedLog.action}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 mb-1">Objet impacté</p>
+                    <p className="text-sm text-slate-700 break-words">{selectedLog.objectImpacted}</p>
+                  </div>
+                  {selectedLog.username && (
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">Utilisateur</p>
+                      <p className="text-sm text-slate-900">{selectedLog.username}</p>
+                    </div>
+                  )}
+                  {selectedLog.ipSource && (
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">Adresse IP</p>
+                      <p className="text-sm font-mono text-slate-900">{selectedLog.ipSource}</p>
+                    </div>
+                  )}
+                  {(selectedLog.oldValue || selectedLog.newValue) && (
+                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200">
+                      {selectedLog.oldValue && (
+                        <div>
+                          <p className="text-xs text-slate-500 mb-1">Ancienne valeur</p>
+                          <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-xs text-red-800 break-words">
+                            {selectedLog.oldValue}
+                          </div>
+                        </div>
+                      )}
+                      {selectedLog.newValue && (
+                        <div>
+                          <p className="text-xs text-slate-500 mb-1">Nouvelle valeur</p>
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-2 text-xs text-green-800 break-words">
+                            {selectedLog.newValue}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {selectedLog.details && Object.keys(selectedLog.details).length > 0 && (
+                    <div>
+                      <p className="text-xs text-slate-500 mb-2">Détails supplémentaires</p>
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                        <pre className="text-xs text-slate-700 overflow-auto max-h-40">
+                          {JSON.stringify(selectedLog.details, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Close Button */}
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                  <button
+                    onClick={() => setSelectedLog(null)}
+                    className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200 transition"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </MainLayout>
   );

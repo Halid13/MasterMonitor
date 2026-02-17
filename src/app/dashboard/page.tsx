@@ -37,8 +37,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [liveMetrics, setLiveMetrics] = useState<{ cpu: number; memory: number; disk: number | null; load: number } | null>(null);
   const [adUsers, setAdUsers] = useState<{ isActive: boolean }[]>([]);
+  const [criticalLogsCount, setCriticalLogsCount] = useState(0);
 
-  const { alerts, servers, equipment, tickets, ipAddresses } = useDashboardStore();
+  const { alerts, servers, equipment, tickets, ipAddresses, logs } = useDashboardStore();
 
   useEffect(() => {
     let isMounted = true;
@@ -90,12 +91,16 @@ export default function Dashboard() {
     fetchAdUsers();
     fetchMetrics();
 
+    // Calculer les logs critiques
+    const critical = logs.filter((log) => log.level === 'critical').length;
+    setCriticalLogsCount(critical);
+
     const timer = setInterval(fetchMetrics, 5000);
     return () => {
       isMounted = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [logs]);
 
   useEffect(() => {
     const totalEquipment = equipment.length;
@@ -207,10 +212,10 @@ export default function Dashboard() {
               color="yellow"
             />
             <StatCard
-              title="Alertes"
-              value={stats.criticalTickets}
-              icon="⚠️"
-              color={stats.criticalTickets > 0 ? 'red' : 'green'}
+              title="Critique"
+              value={criticalLogsCount}
+              icon="🔴"
+              color={criticalLogsCount > 0 ? 'red' : 'green'}
             />
           </div>
         )}

@@ -38,7 +38,7 @@ const unbindSafe = (client: ldap.Client) => {
 };
 
 const findUserDN = (client: ldap.Client, baseDn: string, identifier: string) =>
-  new Promise<{ dn: string; displayName?: string }>((resolve, reject) => {
+  new Promise<{ dn: string; displayName?: string; groups?: string[] }>((resolve, reject) => {
     const safe = escapeLDAP(identifier);
     const filter = LDAP_USER_FILTER
       ? `(&${LDAP_USER_FILTER}(|(sAMAccountName=${safe})(userPrincipalName=${safe})(mail=${safe})))`
@@ -48,28 +48,35 @@ const findUserDN = (client: ldap.Client, baseDn: string, identifier: string) =>
       scope: 'sub' as const,
       filter,
       sizeLimit: 1,
-      attributes: ['dn', 'cn', 'displayName'],
+      attributes: ['dn', 'cn', 'displayName', 'memberOf'],
     };
 
     client.search(baseDn, opts, (err, res) => {
       if (err) return reject(err);
       let foundDn = '';
       let displayName = '';
+      let groups: string[] = [];
 
       res.on('searchEntry', (entry) => {
         foundDn = String(entry.objectName || '');
         displayName = entry.object?.displayName || entry.object?.cn || '';
+        groups = Array.isArray(entry.object?.memberOf)
+          ? entry.object.memberOf.map((g: any) => String(g))
+          : (entry.object?.memberOf ? [String(entry.object.memberOf)] : []);
       });
       res.on('error', (e) => reject(e));
       res.on('end', () => {
         if (!foundDn) return reject(new Error('USER_NOT_FOUND'));
-        resolve({ dn: foundDn, displayName });
+        resolve({ dn: foundDn, displayName, groups });
       });
     });
   });
 
 export async function POST(req: NextRequest) {
+  console.log('[LOGIN] POST request received');
+  
   if (!LDAP_URL || !LDAP_BASE_DN || !LDAP_BIND_DN || !LDAP_BIND_PASSWORD) {
+    console.error('[LOGIN] Missing LDAP configuration');
     return NextResponse.json(
       { ok: false, error: 'Configuration LDAP manquante.' },
       { status: 500 },
@@ -81,7 +88,10 @@ export async function POST(req: NextRequest) {
   const passwordRaw = body?.password;
   const password = String(passwordRaw ?? '');
 
+  console.log(`[LOGIN] Attempt with identifier: ${identifier}`);
+
   if (!identifier || !password) {
+    console.error('[LOGIN] Missing credentials');
     return NextResponse.json(
       { ok: false, error: 'Identifiants requis.' },
       { status: 400 },
@@ -103,15 +113,22 @@ export async function POST(req: NextRequest) {
     await bindAsync(client, LDAP_BIND_DN, LDAP_BIND_PASSWORD);
     console.info(`[LDAP ${requestId}] Bind service account OK`);
     console.info(`[LDAP ${requestId}] Search user identifier: ${identifier}`);
-    const { dn, displayName } = await findUserDN(client, LDAP_BASE_DN, identifier);
+    const { dn, displayName, groups = [] } = await findUserDN(client, LDAP_BASE_DN, identifier);
     console.info(`[LDAP ${requestId}] User DN found: ${dn}`);
+
+    // Déterminer le rôle
+    const groupsLower = groups.map((g) => g.toLowerCase());
+    let role = 'user';
+    if (groupsLower.some((g) => g.includes('admin'))) role = 'admin';
+    else if (groupsLower.some((g) => g.includes('manager'))) role = 'manager';
+    else if (groupsLower.some((g) => g.includes('tech'))) role = 'technician';
 
     // Vérifier le mot de passe en se liant avec l'utilisateur
     console.info(`[LDAP ${requestId}] Bind user DN`);
     await bindAsync(client, dn, password);
     console.info(`[LDAP ${requestId}] Bind user OK`);
 
-    const res = NextResponse.json({ ok: true, user: { dn, displayName } });
+    const res = NextResponse.json({ ok: true, user: { dn, displayName, role } });
     res.cookies.set('mm_auth', '1', {
       httpOnly: true,
       sameSite: 'lax',
@@ -126,20 +143,31 @@ export async function POST(req: NextRequest) {
       maxAge: 60 * 60 * 8,
       path: '/',
     });
+    res.cookies.set('mm_role', role, {
+      httpOnly: false,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 8,
+      path: '/',
+    });
 
     captureSecurityEvents.loginSuccess(displayName || identifier, ipSource, {
       provider: 'ldap',
+      role,
       requestId,
     });
 
+    // Log pour tous les utilisateurs qui se connectent au dashboard
     logger.logUser('LOGIN', displayName || identifier, displayName || identifier, 'info', ipSource, {
       provider: 'ldap',
+      role,
       requestId,
     });
+    console.log(`[LOGIN SUCCESS] User: ${displayName || identifier}, Role: ${role}, IP: ${ipSource}`);
     return res;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR';
-    console.error(`[LDAP ${requestId}] Error: ${message}`);
+    console.error(`[LOGIN] Error: ${message}`);
 
     captureSecurityEvents.loginFailed(identifier, ipSource, message, {
       provider: 'ldap',
