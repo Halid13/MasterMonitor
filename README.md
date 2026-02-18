@@ -1,208 +1,64 @@
-# MasterMonitor - Dashboard IT Centralisé
+# MasterMonitor
 
-Une application web moderne et complète pour la gestion centralisée de votre infrastructure informatique.
+Plateforme de supervision IT pour centraliser l’état des équipements, des serveurs, des tickets et des logs dans un tableau de bord unique.
 
-## 🎯 Caractéristiques principales
+## Contexte
 
-### 1. **Gestion des adresses IP**
-- Visualisation et gestion de toutes les adresses IP du réseau
-- Configuration des subnets, passerelles et serveurs DNS
-- Suivi des adresses assignées et disponibles
-- Statut des adresses (actives/inactives)
+MasterMonitor vise à offrir une vue claire et opérationnelle de l’infrastructure : inventaire, métriques système, tickets et journaux d’activité. L’objectif est de simplifier le suivi quotidien, d’accélérer les diagnostics et d’assurer la traçabilité.
 
-### 2. **Gestion des équipements informatiques**
-- Inventaire complet des équipements (serveurs, stations de travail, imprimantes, etc.)
-- Suivi des caractéristiques (fabricant, modèle, numéro de série)
-- Localisation physique des équipements
-- État opérationnel des appareils
+## Objectifs
 
-### 3. **Gestion des utilisateurs**
-- Administration des comptes utilisateurs
-- Attribution des rôles (Admin, Manager, Technicien, Utilisateur)
-- Gestion des départements
-- Statut actif/inactif des utilisateurs
+- Centraliser les informations clés de l’infrastructure.
+- Fournir un suivi en temps réel des métriques et événements.
+- Faciliter le support via le suivi des tickets.
+- Améliorer la traçabilité grâce aux logs détaillés.
 
-### 4. **Supervision du serveur principal**
-- Suivi en temps réel des métriques:
-  - Utilisation CPU
-  - Mémoire RAM
-  - Espace disque
-  - Trafic réseau
-  - Température (si disponible)
-- État de santé des serveurs
-- Monitoring des services critiques
+## Fonctionnalités principales
 
-### 5. **Gestion des tickets Helpdesk**
-- Création et suivi des tickets de support
-- Classification par priorité (Faible, Moyen, Élevé, Critique)
-- Catégorisation (Matériel, Logiciel, Réseau, Utilisateur)
-- Statut du ticket (Ouvert, En cours, En attente, Résolu, Fermé)
-- Assignation aux techniciens
+- Tableau de bord global (KPIs, tendances, disponibilité).
+- Supervision des serveurs (CPU, mémoire, disque, réseau).
+- Gestion des équipements et utilisateurs.
+- Gestion des adresses IP et sous-réseaux.
+- Suivi des tickets helpdesk.
+- Système de logs avec recherche, filtres, export et purge.
+- Connexion LDAP avec journalisation des connexions.
 
-### 6. **Tableau de bord global**
-- Vue d'ensemble des statistiques clés
-- Alertes et notifications en temps réel
-- Santé globale de l'infrastructure
-- Tickets récents
-- État des serveurs
+## Démarrage rapide
 
-## 🚀 Installation
+1) Installer les dépendances
+- npm install
 
-### Prérequis
-- Node.js 18+ 
-- npm ou yarn
+2) Lancer en développement
+- npm run dev
 
-### Étapes d'installation
+L’application est disponible sur http://localhost:3000
 
-1. **Clonez ou entrez dans le répertoire du projet**
-```bash
-cd c:\Users\halid\Documents\MasterMonitor
-```
+## Configuration
 
-2. **Installez les dépendances** (si ce n'est pas fait)
-```bash
-npm install
-```
+Créer un fichier .env.local à la racine du projet :
 
-3. **Installez les dépendances additionnelles pour les icônes**
-```bash
-npm install lucide-react
-```
+- LDAP_URL=ldap://votre-ldap:389
+- LDAP_BASE_DN=DC=exemple,DC=local
+- LDAP_BIND_DN=CN=service,OU=Users,DC=exemple,DC=local
+- LDAP_BIND_PASSWORD=mot_de_passe
+- LDAP_USER_FILTER=(objectClass=user)
 
-## 📦 Structure du projet
+## Structure du projet
 
-```
-src/
-├── app/                      # Pages de l'application (Next.js App Router)
-│   ├── layout.tsx           # Layout principal
-│   ├── page.tsx             # Tableau de bord
-│   ├── equipment/           # Page gestion équipements
-│   ├── users/               # Page gestion utilisateurs
-│   ├── ip-addresses/        # Page gestion IP
-│   ├── servers/             # Page supervision serveurs
-│   ├── tickets/             # Page tickets helpdesk
-│   └── globals.css          # Styles globaux
-├── components/              # Composants React réutilisables
-│   ├── MainLayout.tsx       # Layout avec sidebar
-│   ├── StatCard.tsx         # Carte statistique
-│   ├── AlertItem.tsx        # Item d'alerte
-│   ├── ServerCard.tsx       # Carte serveur
-│   └── TicketCard.tsx       # Carte ticket
-├── types/                   # Définitions TypeScript
-│   └── index.ts             # Types et interfaces
-├── store/                   # Gestion d'état (Zustand)
-│   └── dashboard.ts         # Store du dashboard
-├── services/                # Services API
-│   └── api.ts               # Client API avec axios
-└── lib/                     # Utilitaires et fonctions
+- src/app : pages et routes API (Next.js App Router)
+- src/components : composants UI réutilisables
+- src/store : état global (Zustand)
+- src/services : services applicatifs (logger, intégrations)
+- src/types : types TypeScript
 
-```
+## Notes
 
-## 🛠️ Technologies utilisées
+- Les logs sont stockés en mémoire côté serveur (utile en dev). Pour la production, prévoir une persistance (base de données).
+- Les données affichées peuvent provenir d’API internes ou d’un backend externe selon l’intégration.
 
-- **Next.js 14+** - Framework React pour production
-- **TypeScript** - Langage typé pour la sécurité
-- **Tailwind CSS** - Framework CSS utilitaire
-- **Zustand** - Gestion d'état légère
-- **Axios** - Client HTTP
-- **Lucide React** - Icônes vectorielles
-- **React** - Bibliothèque UI
+## Technologies
 
-## 🎨 Thèmes et couleurs
-
-Le dashboard utilise un système de couleurs cohérent:
-- **Primary** (Bleu): Actions principales
-- **Green**: Statut sain/Succès
-- **Red**: Erreurs/Alertes critiques
-- **Yellow**: Avertissements
-- **Orange**: Informations importantes
-
-## 📝 Configuration
-
-### Variables d'environnement
-
-Créez un fichier `.env.local` à la racine du projet:
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:3000/api
-```
-
-## 🚀 Démarrage
-
-### Mode développement
-```bash
-npm run dev
-```
-
-L'application sera accessible à: http://localhost:3000
-
-### Mode production
-```bash
-npm run build
-npm start
-```
-
-## 🗄️ Gestion d'état (Zustand)
-
-Le store `useDashboardStore` permet de gérer:
-- Liste des équipements
-- Liste des utilisateurs
-- Liste des tickets
-- État des serveurs
-- Alertes et notifications
-- Adresses IP
-
-### Utilisation:
-```typescript
-import { useDashboardStore } from '@/store/dashboard';
-
-const { equipment, addEquipment } = useDashboardStore();
-```
-
-## 🔗 Intégration API
-
-Les services API sont prêts à communiquer avec votre backend:
-
-```typescript
-import { equipmentService, userService, ticketService } from '@/services/api';
-
-// Exemples:
-const allEquipment = await equipmentService.getAll();
-const allUsers = await userService.getAll();
-const allTickets = await ticketService.getAll();
-```
-
-## 📊 Statistiques du dashboard
-
-Le dashboard affiche:
-- Nombre total d'équipements opérationnels
-- Nombre d'utilisateurs actifs
-- Tickets ouverts
-- Alertes critiques
-- Score de santé des serveurs
-- Utilisation des adresses IP
-
-## 🔐 Sécurité
-
-- TypeScript pour la vérification des types
-- Validation côté client
-- Prêt pour l'authentification (à implémenter)
-- Gestion d'erreurs appropriée
-
-## 📝 Notes importantes
-
-1. **Données mock**: Le dashboard utilise actuellement des données fictives pour la démonstration
-2. **Backend requis**: Connectez votre API backend en modifiant les services API
-3. **Authentification**: À implémenter selon vos besoins
-4. **Base de données**: Le projet est prêt pour une intégration avec une BD
-
-## 🤝 Prochaines étapes
-
-1. Connecter à une base de données réelle
-2. Implémenter l'authentification et l'autorisation
-3. Ajouter des graphiques avancés (Chart.js ou Recharts)
-4. Implémenter les WebSockets pour les mises à jour en temps réel
-5. Ajouter des exports de rapports (PDF, Excel)
-6. Implémenter des filtres et recherche avancée
-7. Ajouter les tests unitaires et d'intégration
+- Next.js, TypeScript, Tailwind CSS
+- Zustand
+- LDAP (auth)
 
