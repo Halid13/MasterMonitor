@@ -51,7 +51,6 @@ export default function Dashboard() {
         if (!isMounted || !data?.ok) return;
         setAdUsers(data.users || []);
       } catch {
-        // ignore
       }
     };
 
@@ -91,7 +90,6 @@ export default function Dashboard() {
     fetchAdUsers();
     fetchMetrics();
 
-    // Calculer les logs critiques
     const critical = logs.filter((log) => log.level === 'critical').length;
     setCriticalLogsCount(critical);
 
@@ -178,7 +176,6 @@ export default function Dashboard() {
   return (
     <MainLayout>
       <div className="space-y-8">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">Tableau de bord</h1>
@@ -190,7 +187,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* KPIs */}
         {stats && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
@@ -220,7 +216,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
             <h2 className="text-lg font-bold text-slate-900 mb-4">Métriques système</h2>
@@ -233,7 +228,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Secondary Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
             <h2 className="text-lg font-bold text-slate-900 mb-4">Tickets par jour</h2>
@@ -246,13 +240,11 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Network Traffic */}
         <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Trafic réseau</h2>
           <NetworkTrafficChart data={timeSeriesData} />
         </div>
 
-        {/* Info Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="rounded-2xl bg-gradient-to-br from-blue-50/80 via-white/60 to-blue-50/40 backdrop-blur-sm border border-blue-200/40 p-6 shadow-sm">
             <div className="flex items-start justify-between mb-4">
@@ -354,9 +346,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Bottom Grids */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Servers */}
           <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
             <h3 className="font-bold text-slate-900 text-sm mb-4">État des serveurs</h3>
             <div className="space-y-2">
@@ -380,7 +370,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Alerts */}
           <div className="rounded-2xl bg-gradient-to-br from-slate-50/80 via-white/60 to-slate-50/40 backdrop-blur-sm border border-slate-200/40 p-6 shadow-sm">
             <h3 className="font-bold text-slate-900 text-sm mb-4">Alertes récentes</h3>
             <div className="space-y-2">
