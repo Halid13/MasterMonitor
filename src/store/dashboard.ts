@@ -136,8 +136,20 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
         oldValue: previous ? JSON.stringify({ name: previous.name, type: previous.type }) : undefined,
         newValue: JSON.stringify(equipment),
       });
+      const updatedName = equipment.name || previous?.name || id;
+      const updatedType = equipment.type || previous?.type || 'unknown';
+      const updateAlert = {
+        id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title: 'Équipement modifié',
+        message: `${updatedName} (${updatedType}) a été mis à jour`,
+        type: 'warning' as const,
+        source: 'Equipment',
+        isResolved: false,
+        createdAt: new Date(),
+      };
       return {
         equipment: state.equipment.map((e) => (e.id === id ? { ...e, ...equipment } : e)),
+        alerts: [updateAlert, ...state.alerts],
       };
     }),
   deleteEquipment: (id) =>
@@ -152,7 +164,21 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
         username: getCurrentUsername(),
         oldValue: previous ? JSON.stringify({ name: previous.name, type: previous.type }) : undefined,
       });
-      return { equipment: state.equipment.filter((e) => e.id !== id) };
+      const deleteName = previous?.name || id;
+      const deleteType = previous?.type || 'unknown';
+      const deleteAlert = {
+        id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title: 'Équipement supprimé',
+        message: `${deleteName} (${deleteType}) a été supprimé`,
+        type: 'error' as const,
+        source: 'Equipment',
+        isResolved: false,
+        createdAt: new Date(),
+      };
+      return {
+        equipment: state.equipment.filter((e) => e.id !== id),
+        alerts: [deleteAlert, ...state.alerts],
+      };
     }),
 
   // Users
