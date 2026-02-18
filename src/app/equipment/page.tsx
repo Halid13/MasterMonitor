@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { Equipment } from '@/types';
@@ -33,8 +33,22 @@ const postLog = (payload: {
   });
 };
 
+type ADUser = {
+  id: string;
+  username: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  department: string;
+  groups: string[];
+  role: 'admin' | 'manager' | 'technician' | 'user';
+  isActive: boolean;
+};
+
 export default function EquipmentPage() {
   const { equipment, users, addEquipment, updateEquipment, deleteEquipment } = useDashboardStore();
+  const [adUsers, setAdUsers] = useState<ADUser[]>([]);
+  const [adUsersLoading, setAdUsersLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'in-service' | 'stock'>('all');
@@ -43,6 +57,24 @@ export default function EquipmentPage() {
     type: 'laptop',
     status: 'stock',
   });
+
+  // Fetch AD users
+  useEffect(() => {
+    const fetchADUsers = async () => {
+      try {
+        const res = await fetch('/api/ad/users');
+        const data = await res.json();
+        if (data?.ok && Array.isArray(data.users)) {
+          setAdUsers(data.users);
+        }
+      } catch (error) {
+        console.error('Failed to fetch AD users:', error);
+      } finally {
+        setAdUsersLoading(false);
+      }
+    };
+    fetchADUsers();
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +87,7 @@ export default function EquipmentPage() {
       payload.departmentService = undefined;
       payload.dateInService = undefined;
     } else if (payload.status === 'in-service') {
-      const selectedUser = users.find((u) => u.id === payload.assignedToUser);
+      const selectedUser = adUsers.find((u) => u.id === payload.assignedToUser);
       payload.departmentService = payload.departmentService || selectedUser?.department;
       payload.dateInService = payload.dateInService || new Date();
     }
@@ -72,7 +104,7 @@ export default function EquipmentPage() {
         hardwareId: formData.hardwareId || '',
         status: payload.status as any,
         assignedToUser: payload.status === 'in-service' ? payload.assignedToUser : undefined,
-        departmentService: payload.status === 'in-service' ? (payload.departmentService || users.find(u => u.id === payload.assignedToUser)?.department) : undefined,
+        departmentService: payload.status === 'in-service' ? (payload.departmentService || adUsers.find(u => u.id === payload.assignedToUser)?.department) : undefined,
         dateInService: payload.status === 'in-service' ? (payload.dateInService || new Date()) : undefined,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -341,7 +373,7 @@ export default function EquipmentPage() {
   const EquipmentCard = ({ item }: { item: Equipment }) => {
     const TypeIcon = getTypeIcon(item.type);
     const statusColor = getStatusColor(item.status);
-    const assignedUser = useMemo(() => users.find(u => u.id === item.assignedToUser), [users, item.assignedToUser]);
+    const assignedUser = useMemo(() => adUsers.find(u => u.id === item.assignedToUser), [adUsers, item.assignedToUser]);
     
     return (
       <div
@@ -602,7 +634,7 @@ export default function EquipmentPage() {
                                 });
                                 return;
                               }
-                              const u = users.find((us) => us.id === val);
+                              const u = adUsers.find((us) => us.id === val);
                               setFormData({
                                 ...formData,
                                 assignedToUser: val,
@@ -612,9 +644,10 @@ export default function EquipmentPage() {
                               });
                             }}
                             className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                            disabled={adUsersLoading}
                           >
-                            <option value="">— Sélectionner un utilisateur —</option>
-                            {users.map((u) => (
+                            <option value="">{adUsersLoading ? 'Chargement...' : '— Sélectionner un utilisateur —'}</option>
+                            {adUsers.map((u) => (
                               <option key={u.id} value={u.id}>
                                 {u.firstName} {u.lastName} ({u.username})
                               </option>
