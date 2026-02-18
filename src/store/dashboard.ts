@@ -92,6 +92,9 @@ interface DashboardStore {
   addLog: (log: SystemLog) => void;
   clearLogs: () => void;
   searchLogs: (filter: LogFilter) => SystemLog[];
+
+  // Cleanup orphaned equipment (when assigned user no longer exists in AD)
+  cleanupOrphanedEquipment: (validUserIds: string[]) => void;
 }
 
 export const useDashboardStore = create<DashboardStore>((set) => ({
@@ -226,7 +229,56 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
         username: getCurrentUsername(),
         oldValue: previous ? JSON.stringify({ username: previous.username, email: previous.email, role: previous.role }) : undefined,
       });
-      return { users: state.users.filter((u) => u.id !== id) };
+
+      // Find all equipment assigned to this user
+      const equipmentToMoveTStock = state.equipment.filter((e) => e.assignedToUser === id);
+
+      // Update equipment to stock status
+      const updatedEquipment = state.equipment.map((e) => {
+        if (e.assignedToUser === id) {
+          postLog({
+            category: 'action',
+            level: 'info',
+            module: 'Equipment',
+            action: 'update',
+            objectImpacted: e.id,
+            username: getCurrentUsername(),
+            oldValue: JSON.stringify({ status: e.status, assignedToUser: e.assignedToUser }),
+            newValue: JSON.stringify({ status: 'stock', assignedToUser: undefined }),
+            details: { reason: 'user-deleted', userId: id },
+          });
+          return {
+            ...e,
+            status: 'stock' as const,
+            assignedToUser: undefined,
+            departmentService: undefined,
+            dateInService: undefined,
+            updatedAt: new Date(),
+          };
+        }
+        return e;
+      });
+
+      // Create alert for moved equipment if any
+      let alerts = state.alerts;
+      if (equipmentToMoveTStock.length > 0) {
+        const movementAlert = {
+          id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          title: 'Utilisateur supprimé - Équipements en stock',
+          message: `${equipmentToMoveTStock.length} équipement(s) précédemment assigné(s) à ${previous?.email || id} ont été déplacé(s) en stock`,
+          type: 'warning' as const,
+          source: 'Equipment',
+          isResolved: false,
+          createdAt: new Date(),
+        };
+        alerts = [movementAlert, ...state.alerts];
+      }
+
+      return {
+        users: state.users.filter((u) => u.id !== id),
+        equipment: updatedEquipment,
+        alerts,
+      };
     }),
 
   // Tickets
@@ -477,4 +529,62 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
   searchLogs: (filter: LogFilter) => {
     return new Set<SystemLog>([]).size; // Will be implemented in component
   },
+
+  // Cleanup equipment assigned to users that no longer exist in AD
+  cleanupOrphanedEquipment: (validUserIds: string[]) =>
+    set((state) => {
+      const orphanedEquipment = state.equipment.filter(
+        (e) => e.assignedToUser && !validUserIds.includes(e.assignedToUser)
+      );
+
+      if (orphanedEquipment.length === 0) {
+        return {}; // No orphaned equipment, no changes needed
+      }
+
+      // Log cleanup for each orphaned equipment
+      orphanedEquipment.forEach((eq) => {
+        postLog({
+          category: 'action',
+          level: 'info',
+          module: 'Equipment',
+          action: 'update',
+          objectImpacted: eq.id,
+          username: getCurrentUsername(),
+          oldValue: JSON.stringify({ status: eq.status, assignedToUser: eq.assignedToUser }),
+          newValue: JSON.stringify({ status: 'stock', assignedToUser: undefined }),
+          details: { reason: 'user-removed-from-ad', userId: eq.assignedToUser },
+        });
+      });
+
+      // Move orphaned equipment to stock
+      const updatedEquipment = state.equipment.map((e) => {
+        if (e.assignedToUser && !validUserIds.includes(e.assignedToUser)) {
+          return {
+            ...e,
+            status: 'stock' as const,
+            assignedToUser: undefined,
+            departmentService: undefined,
+            dateInService: undefined,
+            updatedAt: new Date(),
+          };
+        }
+        return e;
+      });
+
+      // Create alert
+      const cleanupAlert = {
+        id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title: 'Équipements orphelins nettoyés',
+        message: `${orphanedEquipment.length} équipement(s) assigné(s) à des utilisateurs inexistants ont été déplacé(s) en stock`,
+        type: 'warning' as const,
+        source: 'Equipment',
+        isResolved: false,
+        createdAt: new Date(),
+      };
+
+      return {
+        equipment: updatedEquipment,
+        alerts: [cleanupAlert, ...state.alerts],
+      };
+    }),
 }));

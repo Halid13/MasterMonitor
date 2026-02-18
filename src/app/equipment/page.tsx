@@ -46,7 +46,7 @@ type ADUser = {
 };
 
 export default function EquipmentPage() {
-  const { equipment, users, addEquipment, updateEquipment, deleteEquipment } = useDashboardStore();
+  const { equipment, users, addEquipment, updateEquipment, deleteEquipment, cleanupOrphanedEquipment } = useDashboardStore();
   const [adUsers, setAdUsers] = useState<ADUser[]>([]);
   const [adUsersLoading, setAdUsersLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -58,7 +58,7 @@ export default function EquipmentPage() {
     status: 'stock',
   });
 
-  // Fetch AD users
+  // Fetch AD users and cleanup orphaned equipment
   useEffect(() => {
     const fetchADUsers = async () => {
       try {
@@ -66,6 +66,9 @@ export default function EquipmentPage() {
         const data = await res.json();
         if (data?.ok && Array.isArray(data.users)) {
           setAdUsers(data.users);
+          // Cleanup equipment assigned to users that no longer exist in AD
+          const validUserIds = data.users.map((u: ADUser) => u.id);
+          cleanupOrphanedEquipment(validUserIds);
         }
       } catch (error) {
         console.error('Failed to fetch AD users:', error);
@@ -74,7 +77,7 @@ export default function EquipmentPage() {
       }
     };
     fetchADUsers();
-  }, []);
+  }, [cleanupOrphanedEquipment]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
