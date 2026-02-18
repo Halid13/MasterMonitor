@@ -246,16 +246,16 @@ export default function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="rounded-2xl bg-gradient-to-br from-blue-50/80 via-white/60 to-blue-50/40 backdrop-blur-sm border border-blue-200/40 p-6 shadow-sm">
-            <div className="flex items-start justify-between mb-4">
+          <div className="relative z-30 isolate rounded-2xl bg-gradient-to-br from-blue-50/80 via-white/60 to-blue-50/40 backdrop-blur-sm border border-blue-200/40 p-6 shadow-sm">
+            <div className="flex items-start justify-between mb-4 relative">
               <h3 className="font-bold text-slate-900 text-sm">Santé serveurs</h3>
-              <div className="group relative">
+              <div className="group relative isolate">
                 <button className="text-slate-400 hover:text-slate-600 text-xs">
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                   </svg>
                 </button>
-                <div className="hidden group-hover:block absolute right-0 top-6 w-72 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-lg z-10">
+                <div className="hidden group-hover:block absolute right-[-20px] top-8 w-72 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-lg z-[999]">
                   <p className="font-semibold mb-2">Calcul de la santé globale :</p>
                   <ul className="space-y-1">
                     <li>• <span className="text-blue-300">CPU (35%)</span> : Utilisation processeur</li>
