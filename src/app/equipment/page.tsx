@@ -38,6 +38,7 @@ export default function EquipmentPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'in-service' | 'stock'>('all');
+  const [deleteTarget, setDeleteTarget] = useState<Equipment | null>(null);
   const [formData, setFormData] = useState<Partial<Equipment>>({
     type: 'laptop',
     status: 'stock',
@@ -405,7 +406,9 @@ export default function EquipmentPage() {
             <Edit2 size={16} />
           </button>
           <button
-            onClick={() => deleteEquipment(item.id)}
+            onClick={() => {
+              setDeleteTarget(item);
+            }}
             className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
             title="Supprimer"
           >
@@ -724,6 +727,46 @@ export default function EquipmentPage() {
           </div>
         )}
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200/60 p-6 w-full max-w-md">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="h-10 w-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0">
+                <Trash2 size={20} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Confirmer la suppression</h3>
+                <p className="text-sm text-slate-600 mt-1">
+                  Voulez-vous supprimer <span className="font-semibold">{deleteTarget.name}</span> ?
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-600 mb-5">
+              Cette action est définitive. Les informations associées à cet équipement seront perdues.
+            </div>
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={() => {
+                  deleteEquipment(deleteTarget.id);
+                  setDeleteTarget(null);
+                }}
+                className="px-4 py-2 rounded-lg bg-red-500 text-white font-semibold hover:bg-red-600"
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 }
