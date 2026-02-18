@@ -645,6 +645,7 @@ export default function EquipmentPage() {
                             }}
                             className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
                             disabled={adUsersLoading}
+                            size={3}
                           >
                             <option value="">{adUsersLoading ? 'Chargement...' : '— Sélectionner un utilisateur —'}</option>
                             {adUsers.map((u) => (
