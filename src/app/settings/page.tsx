@@ -18,6 +18,7 @@ const defaultSettings = {
   density: 'confort',
   language: 'fr',
   timezone: 'Africa/Casablanca',
+  location: '',
   auditLogs: true,
   adDomain: 'monitor.local',
   adServer: '192.168.203.128',
@@ -25,9 +26,39 @@ const defaultSettings = {
 
 type Settings = typeof defaultSettings;
 
+type ADUser = {
+  id: string;
+  username: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  department: string;
+  location: string;
+  groups: string[];
+  role: 'admin' | 'manager' | 'technician' | 'user';
+  isActive: boolean;
+};
+
+const getCookieValue = (name: string) => {
+  if (typeof document === 'undefined') return undefined;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : undefined;
+};
+
+const getRoleLabel = (role: ADUser['role']) => {
+  const labels: Record<string, string> = {
+    admin: 'Administrateur',
+    manager: 'Manager',
+    technician: 'Technicien',
+    user: 'Utilisateur',
+  };
+  return labels[role] || role;
+};
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [saved, setSaved] = useState(false);
+  const [hasStoredSettings, setHasStoredSettings] = useState(false);
 
   useEffect(() => {
     const raw = localStorage.getItem('mm_settings');
@@ -35,10 +66,66 @@ export default function SettingsPage() {
       try {
         const parsed = JSON.parse(raw) as Partial<Settings>;
         setSettings((prev) => ({ ...prev, ...parsed }));
+        setHasStoredSettings(true);
       } catch {
         // ignore
       }
     }
+  }, []);
+
+  useEffect(() => {
+    if (hasStoredSettings) return;
+    const browserLanguage = (typeof navigator !== 'undefined' && navigator.language)
+      ? navigator.language.split('-')[0]
+      : defaultSettings.language;
+    const browserTimezone = (() => {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || defaultSettings.timezone;
+      } catch {
+        return defaultSettings.timezone;
+      }
+    })();
+
+    setSettings((prev) => ({
+      ...prev,
+      language: browserLanguage,
+      timezone: browserTimezone,
+    }));
+  }, [hasStoredSettings]);
+
+  useEffect(() => {
+    const fetchAdProfile = async () => {
+      try {
+        const res = await fetch('/api/ad/users');
+        const data = await res.json();
+        if (!res.ok || !data?.ok || !Array.isArray(data.users)) return;
+
+        const currentUsername = (getCookieValue('mm_user') || '').toLowerCase();
+        if (!currentUsername) return;
+
+        const matched = (data.users as ADUser[]).find((u) =>
+          (u.username || '').toLowerCase() === currentUsername ||
+          (u.email || '').toLowerCase() === currentUsername
+        );
+
+        if (!matched) return;
+
+        const fullName = `${matched.firstName || ''} ${matched.lastName || ''}`.trim();
+
+        setSettings((prev) => ({
+          ...prev,
+          fullName: fullName || prev.fullName,
+          email: matched.email || prev.email,
+          role: getRoleLabel(matched.role) || prev.role,
+          department: matched.department || prev.department,
+          location: matched.location || prev.location,
+        }));
+      } catch {
+        // ignore
+      }
+    };
+
+    fetchAdProfile();
   }, []);
 
   useEffect(() => {
@@ -259,6 +346,15 @@ export default function SettingsPage() {
                   value={settings.timezone}
                   onChange={(e) => update('timezone', e.target.value)}
                   className="w-full mt-2 px-4 py-2 rounded-xl bg-white/70 border border-slate-200"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Localisation</label>
+                <input
+                  value={settings.location ?? ''}
+                  onChange={(e) => update('location', e.target.value)}
+                  className="w-full mt-2 px-4 py-2 rounded-xl bg-white/70 border border-slate-200"
+                  placeholder="Ville / Site"
                 />
               </div>
             </div>
