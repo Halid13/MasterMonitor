@@ -8,8 +8,15 @@ export function middleware(request: NextRequest) {
 
   const isPublic = PUBLIC_PATHS.some((path) => pathname.startsWith(path)) || pathname.startsWith('/api');
   const hasAuth = request.cookies.get('mm_auth');
+  const role = request.cookies.get('mm_role')?.value;
 
   if (!isPublic && !hasAuth) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = '/login';
+    return NextResponse.redirect(loginUrl);
+  }
+
+  if (!isPublic && hasAuth && role !== 'admin') {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = '/login';
     return NextResponse.redirect(loginUrl);

@@ -10,6 +10,7 @@ const {
   LDAP_BIND_DN,
   LDAP_BIND_PASSWORD,
   LDAP_USER_FILTER,
+  LDAP_ADMIN_GROUPS,
 } = process.env;
 
 const escapeLDAP = (value: string) =>
@@ -36,6 +37,72 @@ const unbindSafe = (client: ldap.Client) => {
     // ignore
   }
 };
+
+const cnFromDn = (dn: string) => {
+  const match = /CN=([^,]+)/i.exec(dn);
+  return match ? match[1] : dn;
+};
+
+const normalizeGroupName = (name: string) => name.trim().toLowerCase();
+
+const findGroupDns = (client: ldap.Client, baseDn: string, groupNames: string[]) =>
+  new Promise<string[]>((resolve, reject) => {
+    if (groupNames.length === 0) return resolve([]);
+    const filters = groupNames
+      .map((name) => {
+        const safe = escapeLDAP(name);
+        return `(|(cn=${safe})(name=${safe})(displayName=${safe}))`;
+      })
+      .join('');
+
+    const filter = `(&(objectClass=group)(|${filters}))`;
+    const opts = {
+      scope: 'sub' as const,
+      filter,
+      attributes: ['dn'],
+    };
+
+    const dns: string[] = [];
+    client.search(baseDn, opts, (err, res) => {
+      if (err) return reject(err);
+      res.on('searchEntry', (entry) => {
+        const dn = String(entry.objectName || entry.dn || '').trim();
+        if (dn) dns.push(dn);
+      });
+      res.on('error', (e) => reject(e));
+      res.on('end', () => resolve(Array.from(new Set(dns))));
+    });
+  });
+
+const isUserInGroupChain = (
+  client: ldap.Client,
+  baseDn: string,
+  userDn: string,
+  groupDns: string[],
+) =>
+  new Promise<boolean>((resolve, reject) => {
+    if (groupDns.length === 0) return resolve(false);
+    const filters = groupDns
+      .map((dn) => `(memberOf:1.2.840.113556.1.4.1941:=${escapeLDAP(dn)})`)
+      .join('');
+    const filter = `(&(distinguishedName=${escapeLDAP(userDn)})(|${filters}))`;
+    const opts = {
+      scope: 'sub' as const,
+      filter,
+      sizeLimit: 1,
+      attributes: ['dn'],
+    };
+
+    let found = false;
+    client.search(baseDn, opts, (err, res) => {
+      if (err) return reject(err);
+      res.on('searchEntry', () => {
+        found = true;
+      });
+      res.on('error', (e) => reject(e));
+      res.on('end', () => resolve(found));
+    });
+  });
 
 const findUserDN = (client: ldap.Client, baseDn: string, identifier: string) =>
   new Promise<{ dn: string; displayName?: string; groups?: string[] }>((resolve, reject) => {
@@ -117,9 +184,25 @@ export async function POST(req: NextRequest) {
     console.info(`[LDAP ${requestId}] User DN found: ${dn}`);
 
     // Déterminer le rôle
-    const groupsLower = groups.map((g) => g.toLowerCase());
+    const groupNames = groups.map((g) => normalizeGroupName(cnFromDn(g)));
+    const groupsLower = groups.map((g) => normalizeGroupName(g));
+    const adminGroups = (LDAP_ADMIN_GROUPS || '')
+      .split(/[,;|]/)
+      .map((g) => normalizeGroupName(g))
+      .filter(Boolean);
+
+    const adminGroupDns = await findGroupDns(client, LDAP_BASE_DN, adminGroups);
+    const isAdminByChain = await isUserInGroupChain(client, LDAP_BASE_DN, dn, adminGroupDns);
+
+    const isAdmin =
+      isAdminByChain ||
+      adminGroups.some((g) => groupNames.includes(g) || groupsLower.some((dnVal) => dnVal.includes(g))) ||
+      groupNames.some((g) => g.includes('domain admins') || g.includes('administrateurs') || g.includes('administrators')) ||
+      groupsLower.some((g) => g.includes('domain admins') || g.includes('administrateurs') || g.includes('administrators')) ||
+      groupsLower.some((g) => g.includes('admin'));
+
     let role = 'user';
-    if (groupsLower.some((g) => g.includes('admin'))) role = 'admin';
+    if (isAdmin) role = 'admin';
     else if (groupsLower.some((g) => g.includes('manager'))) role = 'manager';
     else if (groupsLower.some((g) => g.includes('tech'))) role = 'technician';
 
@@ -127,6 +210,18 @@ export async function POST(req: NextRequest) {
     console.info(`[LDAP ${requestId}] Bind user DN`);
     await bindAsync(client, dn, password);
     console.info(`[LDAP ${requestId}] Bind user OK`);
+
+    if (role !== 'admin') {
+      captureSecurityEvents.loginFailed(identifier, ipSource, 'ROLE_NOT_AUTHORIZED', {
+        provider: 'ldap',
+        requestId,
+        role,
+      });
+      return NextResponse.json(
+        { ok: false, error: 'Accès refusé : administrateur requis.' },
+        { status: 403 },
+      );
+    }
 
     const res = NextResponse.json({ ok: true, user: { dn, displayName, role } });
     res.cookies.set('mm_auth', '1', {
