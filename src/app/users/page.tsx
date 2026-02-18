@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import MainLayout from '@/components/MainLayout';
-import { Plus, Users, UserCheck, Filter, Search, X } from 'lucide-react';
+import { Plus, Users, UserCheck, Filter, Search, X, Laptop } from 'lucide-react';
+import { useDashboardStore } from '@/store/dashboard';
 
 type ADUser = {
   id: string;
@@ -17,6 +18,7 @@ type ADUser = {
 };
 
 export default function UsersPage() {
+  const { equipment } = useDashboardStore();
   const [adUsers, setAdUsers] = useState<ADUser[]>([]);
   const [adLoading, setAdLoading] = useState(true);
   const [adError, setAdError] = useState('');
@@ -118,6 +120,15 @@ export default function UsersPage() {
   };
 
   const hasActiveFilters = filterRole || filterDepartment || filterGroup || searchQuery;
+
+  // Get equipment assigned to each user
+  const getUserEquipment = useMemo(() => {
+    const equipmentByUser: Record<string, typeof equipment> = {};
+    adUsers.forEach(user => {
+      equipmentByUser[user.id] = equipment.filter(eq => eq.assignedToUser === user.id);
+    });
+    return equipmentByUser;
+  }, [equipment, adUsers]);
 
   return (
     <MainLayout>
@@ -292,6 +303,20 @@ export default function UsersPage() {
                 <div className="text-center">
                   <p className="text-slate-400 mb-0.5">Département</p>
                   <p className="text-slate-700 font-medium">{user.department || '—'}</p>
+                </div>
+                <div className="text-center min-w-[140px]">
+                  <p className="text-slate-400 mb-0.5">Équipements</p>
+                  {getUserEquipment[user.id]?.length > 0 ? (
+                    <div className="flex flex-wrap gap-1 justify-center">
+                      {getUserEquipment[user.id].map((eq) => (
+                        <span key={eq.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-xs font-medium" title={`${eq.name} - ${eq.serialNumber}`}>
+                          <Laptop size={12} /> {eq.name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-400">Aucun</span>
+                  )}
                 </div>
               </div>
 
