@@ -1,8 +1,9 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Menu, X, Bell, LogOut, Settings, Search, Home, Zap, Users, Globe, Cpu, Ticket, FileText } from 'lucide-react';
+import { useDashboardStore } from '@/store/dashboard';
 
 interface LayoutProps {
   children: ReactNode;
@@ -16,6 +17,35 @@ export const MainLayout = ({ children }: LayoutProps) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [adminName, setAdminName] = useState<string>('Administrateur');
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const { alerts, logs } = useDashboardStore();
+
+  const notificationItems = useMemo(() => {
+    const recentAlerts = alerts
+      .filter((a) => !a.isResolved)
+      .slice(0, 3)
+      .map((a) => ({
+        id: `alert-${a.id}`,
+        title: a.title || 'Alerte',
+        message: a.message,
+        type: a.type || 'info',
+        time: 'Maintenant',
+      }));
+
+    const criticalLogs = logs
+      .filter((l) => l.level === 'critical')
+      .slice(0, 3)
+      .map((l) => ({
+        id: `log-${l.id}`,
+        title: 'Log critique',
+        message: `${l.action} • ${l.objectImpacted}`,
+        type: 'critical',
+        time: new Date(l.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      }));
+
+    return [...recentAlerts, ...criticalLogs].slice(0, 5);
+  }, [alerts, logs]);
 
   useEffect(() => {
     const cookie = document.cookie
@@ -147,7 +177,7 @@ export const MainLayout = ({ children }: LayoutProps) => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="h-20 bg-white/30 backdrop-blur-xl border-b border-white/20 px-8 flex items-center justify-between gap-4 shadow-sm">
+        <header className="relative z-40 h-20 bg-white/30 backdrop-blur-xl border-b border-white/20 px-8 flex items-center justify-between gap-4 shadow-sm">
           {/* Search Bar */}
           <div className="flex-1 max-w-xl">
             <div className="relative group">
@@ -169,11 +199,59 @@ export const MainLayout = ({ children }: LayoutProps) => {
 
           {/* Right Actions */}
           <div className="flex items-center gap-4">
-            {/* Notifications */}
-            <button className="relative p-3 text-slate-600 hover:text-slate-900 hover:bg-white/40 rounded-xl transition-all duration-300 group hover:scale-110">
-              <Bell size={20} className="group-hover:animate-bounce" />
-              <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-gradient-to-r from-red-500 to-pink-500 animate-pulse shadow-lg" />
-            </button>
+            <div className="relative isolate">
+              <button
+                onClick={() => setShowNotifications((prev) => !prev)}
+                className="relative p-3 text-slate-600 hover:text-slate-900 hover:bg-white/40 rounded-xl transition-all duration-300 group hover:scale-110"
+              >
+                <Bell size={20} className="group-hover:animate-bounce" />
+                {notificationItems.length > 0 && (
+                  <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-gradient-to-r from-red-500 to-pink-500 animate-pulse shadow-lg" />
+                )}
+              </button>
+
+              {showNotifications && (
+                <div className="absolute right-0 mt-3 w-80 rounded-2xl bg-white/95 border border-slate-200/60 shadow-2xl p-4 z-[60]">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-bold text-slate-900">Notifications</h4>
+                    <button
+                      onClick={() => setShowNotifications(false)}
+                      className="text-xs text-slate-500 hover:text-slate-700"
+                    >
+                      Fermer
+                    </button>
+                  </div>
+
+                  {notificationItems.length === 0 ? (
+                    <div className="text-xs text-slate-500 py-6 text-center">Aucune notification</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {notificationItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="rounded-xl border border-slate-200/60 bg-slate-50/60 px-3 py-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-slate-900">{item.title}</span>
+                            <span className="text-[10px] text-slate-400">{item.time}</span>
+                          </div>
+                          <p className="text-xs text-slate-600 mt-1 line-clamp-2">{item.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-3 pt-3 border-t border-slate-200/60">
+                    <button
+                      onClick={() => router.push('/logs')}
+                      className="w-full text-xs font-semibold text-blue-600 hover:text-blue-700"
+                    >
+                      Voir tous les logs
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Profile */}
             <div className="flex items-center gap-3 pl-4 border-l border-white/20 group cursor-pointer">

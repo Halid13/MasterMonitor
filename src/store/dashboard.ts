@@ -109,7 +109,19 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
         username: getCurrentUsername(),
         newValue: JSON.stringify({ name: equipment.name, type: equipment.type }),
       });
-      return { equipment: [...state.equipment, equipment] };
+      const newAlert = {
+        id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title: 'Nouvel équipement',
+        message: `${equipment.name} (${equipment.type}) a été ajouté`,
+        type: 'info' as const,
+        source: 'Equipment',
+        isResolved: false,
+        createdAt: new Date(),
+      };
+      return {
+        equipment: [...state.equipment, equipment],
+        alerts: [newAlert, ...state.alerts],
+      };
     }),
   updateEquipment: (id, equipment) =>
     set((state) => {
