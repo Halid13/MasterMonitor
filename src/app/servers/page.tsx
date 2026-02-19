@@ -1,7 +1,7 @@
 'use client';
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
-import { Pencil, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 export default function ServersPage() {
@@ -9,6 +9,8 @@ export default function ServersPage() {
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({ name: '', ipAddress: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [serverToDelete, setServerToDelete] = useState<{ id: string; name: string; ipAddress: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const serversRef = useRef(servers);
   const diagnosticRef = useRef<Record<string, { status: 'pending' | 'ok' | 'error'; message: string }>>({});
 
@@ -375,13 +377,22 @@ export default function ServersPage() {
 
   const handleDelete = (id: string) => {
     if (id === 'local-pc') return;
-    if (window.confirm('Supprimer ce serveur ?')) {
-      const server = servers.find((s) => s.id === id);
-      if (server) {
-        void emitServerLog('warning', 'Serveur supprimé de la supervision.', server.name, server.ipAddress, { stage: 'delete' });
-      }
-      deleteServer(id);
-      delete diagnosticRef.current[id];
+    const server = servers.find((s) => s.id === id);
+    if (!server) return;
+    setServerToDelete({ id: server.id, name: server.name, ipAddress: server.ipAddress });
+  };
+
+  const confirmDeleteServer = async () => {
+    if (!serverToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await emitServerLog('warning', 'Serveur supprimé de la supervision.', serverToDelete.name, serverToDelete.ipAddress, { stage: 'delete' });
+      deleteServer(serverToDelete.id);
+      delete diagnosticRef.current[serverToDelete.id];
+      setServerToDelete(null);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -463,6 +474,60 @@ export default function ServersPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {serverToDelete && (
+          <div
+            className="fixed inset-0 z-50 bg-black/45 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => !isDeleting && setServerToDelete(null)}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                  <AlertTriangle size={18} />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-base font-bold text-slate-900">Supprimer ce serveur ?</h3>
+                  <p className="text-xs text-slate-500 mt-1">Cette action retire le serveur de la supervision active.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setServerToDelete(null)}
+                  disabled={isDeleting}
+                  className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <p className="text-sm font-semibold text-slate-900">{serverToDelete.name}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{serverToDelete.ipAddress}</p>
+              </div>
+
+              <div className="mt-5 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setServerToDelete(null)}
+                  disabled={isDeleting}
+                  className="flex-1 rounded-lg bg-slate-100 text-slate-700 py-2 text-sm font-semibold hover:bg-slate-200 disabled:opacity-60"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteServer}
+                  disabled={isDeleting}
+                  className="flex-1 rounded-lg bg-rose-600 text-white py-2 text-sm font-semibold hover:bg-rose-700 disabled:opacity-70"
+                >
+                  {isDeleting ? 'Suppression…' : 'Supprimer'}
+                </button>
+              </div>
             </div>
           </div>
         )}
