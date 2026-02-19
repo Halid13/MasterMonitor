@@ -10,6 +10,64 @@ export default function ServersPage() {
   const [formData, setFormData] = useState({ name: '', ipAddress: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
   const serversRef = useRef(servers);
+  const diagnosticRef = useRef<Record<string, { status: 'pending' | 'ok' | 'error'; message: string }>>({});
+
+  const emitServerLog = async (
+    level: 'info' | 'warning' | 'error',
+    action: string,
+    serverName: string,
+    ipAddress: string,
+    details?: Record<string, any>,
+  ) => {
+    try {
+      await fetch('/api/logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: 'system',
+          level,
+          module: 'Server Monitoring',
+          action,
+          objectImpacted: `${serverName} (${ipAddress})`,
+          details,
+        }),
+      });
+    } catch {
+      // ignore logging transport errors
+    }
+  };
+
+  const setPendingDiagnostic = (serverId: string, message: string, serverName: string, ipAddress: string) => {
+    diagnosticRef.current[serverId] = { status: 'pending', message };
+    void emitServerLog('info', message, serverName, ipAddress, { stage: 'pending', waitWindowSec: 15 });
+  };
+
+  const setOkDiagnostic = (serverId: string, message: string, serverName: string, ipAddress: string) => {
+    const previous = diagnosticRef.current[serverId];
+    diagnosticRef.current[serverId] = { status: 'ok', message };
+    if (!previous || previous.status !== 'ok' || previous.message !== message) {
+      void emitServerLog('info', message, serverName, ipAddress, { stage: 'success' });
+    }
+  };
+
+  const setErrorDiagnostic = (serverId: string, message: string, serverName: string, ipAddress: string) => {
+    const previous = diagnosticRef.current[serverId];
+    diagnosticRef.current[serverId] = { status: 'error', message };
+    if (!previous || previous.status !== 'error' || previous.message !== message) {
+      void emitServerLog('error', message, serverName, ipAddress, { stage: 'error' });
+    }
+  };
+
+  const getDiagnosticError = (data: any) => {
+    const details = data?.details;
+    const raw = typeof details === 'string'
+      ? details
+      : details?.stdout || details?.stderr || data?.error || 'Erreur de récupération distante.';
+    const compact = String(raw).replace(/\s+/g, ' ').trim();
+    if (compact.includes('Accès refusé')) return 'Accès refusé (vérifier compte WinRM/CIM).';
+    if (compact.length > 140) return `${compact.slice(0, 140)}...`;
+    return compact;
+  };
 
   useEffect(() => {
     serversRef.current = servers;
@@ -54,6 +112,7 @@ export default function ServersPage() {
         } else {
           updateServerStatus(serverId, base);
         }
+        setOkDiagnostic(serverId, 'Métriques locales récupérées sans erreur.', base.name, base.ipAddress);
       } catch {
         // ignore
       }
@@ -114,6 +173,7 @@ export default function ServersPage() {
               },
               lastHealthCheck: new Date(),
             });
+            setOkDiagnostic(server.id, 'Serveur synchronisé (source locale).', server.name, server.ipAddress);
             return;
           }
 
@@ -123,6 +183,7 @@ export default function ServersPage() {
             const data = await res.json();
             if (!isMounted || !data?.ok) {
               updateServerStatus(server.id, { status: 'warning' });
+              setErrorDiagnostic(server.id, getDiagnosticError(data), server.name, server.ipAddress);
               return;
             }
             const healthScore = Math.round(100 - Math.max(data.cpu || 0, data.memory || 0, data.disk || 0));
@@ -140,8 +201,10 @@ export default function ServersPage() {
               },
               lastHealthCheck: new Date(),
             });
+            setOkDiagnostic(server.id, 'Métriques récupérées sans erreur.', data.host || server.name, server.ipAddress);
           } catch {
             updateServerStatus(server.id, { status: 'offline' });
+            setErrorDiagnostic(server.id, 'Serveur inaccessible (réseau/WinRM).', server.name, server.ipAddress);
           }
         }),
       );
@@ -266,6 +329,7 @@ export default function ServersPage() {
     if (!formData.name.trim() || !normalizedIpAddress) return;
 
     if (editingId) {
+      setPendingDiagnostic(editingId, 'Serveur modifié. Synchronisation en cours (10–15s)...', formData.name.trim(), normalizedIpAddress);
       updateServerStatus(editingId, {
         name: formData.name.trim(),
         ipAddress: normalizedIpAddress,
@@ -273,6 +337,7 @@ export default function ServersPage() {
       setEditingId(null);
     } else {
       const id = Date.now().toString();
+      setPendingDiagnostic(id, 'Serveur ajouté. Récupération des métriques en cours (10–15s)...', formData.name.trim(), normalizedIpAddress);
       addServer({
         id,
         name: formData.name.trim(),
@@ -311,7 +376,12 @@ export default function ServersPage() {
   const handleDelete = (id: string) => {
     if (id === 'local-pc') return;
     if (window.confirm('Supprimer ce serveur ?')) {
+      const server = servers.find((s) => s.id === id);
+      if (server) {
+        void emitServerLog('warning', 'Serveur supprimé de la supervision.', server.name, server.ipAddress, { stage: 'delete' });
+      }
       deleteServer(id);
+      delete diagnosticRef.current[id];
     }
   };
 
