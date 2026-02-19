@@ -95,10 +95,32 @@ const checkAnomaly = (
 };
 
 const parseNetstatWindows = (output: string) => {
-  const rxMatch = output.match(/Bytes\s+Received\s*=\s*(\d+)/i);
-  const txMatch = output.match(/Bytes\s+Sent\s*=\s*(\d+)/i);
-  if (!rxMatch || !txMatch) return null;
-  return { rx: Number(rxMatch[1]), tx: Number(txMatch[1]) };
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const bytesLine = lines.find((line) => /(bytes|octets)/i.test(line));
+  if (bytesLine) {
+    const values = bytesLine.match(/\d+/g);
+    if (values && values.length >= 2) {
+      return { rx: Number(values[0]), tx: Number(values[1]) };
+    }
+  }
+
+  const fallbackLine = lines.find((line) => {
+    const values = line.match(/\d+/g);
+    return values != null && values.length >= 2;
+  });
+
+  if (fallbackLine) {
+    const values = fallbackLine.match(/\d+/g);
+    if (values && values.length >= 2) {
+      return { rx: Number(values[0]), tx: Number(values[1]) };
+    }
+  }
+
+  return null;
 };
 
 const getNetworkBytesWindows = async () =>

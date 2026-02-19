@@ -18,6 +18,13 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
+const formatBytesPerSecond = (value: number) => {
+  if (!Number.isFinite(value)) return '0 B/s';
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(2)} MB/s`;
+  if (value >= 1024) return `${(value / 1024).toFixed(2)} KB/s`;
+  return `${value.toFixed(0)} B/s`;
+};
+
 // Graphique linéaire pour les métriques CPU/RAM/Disque
 export const MetricsLineChart = ({ data }: { data: any[] }) => (
   <ResponsiveContainer width="100%" height={300}>
@@ -149,7 +156,7 @@ export const NetworkTrafficChart = ({ data }: { data: any[] }) => (
     <LineChart data={data} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
       <XAxis dataKey="time" stroke="#6b7280" />
-      <YAxis stroke="#6b7280" />
+      <YAxis stroke="#6b7280" tickFormatter={(value: number) => formatBytesPerSecond(value)} />
       <Tooltip
         contentStyle={{
           backgroundColor: '#1f2937',
@@ -157,10 +164,11 @@ export const NetworkTrafficChart = ({ data }: { data: any[] }) => (
           borderRadius: '8px',
           color: '#fff',
         }}
+        formatter={(value) => formatBytesPerSecond(Number(value))}
       />
       <Legend />
-      <Line type="monotone" dataKey="incoming" stroke="#10b981" strokeWidth={2} dot={false} />
-      <Line type="monotone" dataKey="outgoing" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+      <Line type="monotone" dataKey="incoming" name="Entrant" stroke="#10b981" strokeWidth={2} dot={false} />
+      <Line type="monotone" dataKey="outgoing" name="Sortant" stroke="#8b5cf6" strokeWidth={2} dot={false} />
     </LineChart>
   </ResponsiveContainer>
 );
