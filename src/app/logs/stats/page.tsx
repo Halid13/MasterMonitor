@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Activity, TrendingUp, AlertTriangle, Shield } from 'lucide-react';
 
 interface LogStats {
@@ -64,10 +64,10 @@ export default function LogsStatsPage() {
   }
 
   // Calculer les pourcentages
-  const systemPercent = stats.totalLogs > 0 ? (stats.systemLogs / stats.totalLogs * 100).toFixed(1) : 0;
-  const userPercent = stats.totalLogs > 0 ? (stats.userLogs / stats.totalLogs * 100).toFixed(1) : 0;
-  const actionPercent = stats.totalLogs > 0 ? (stats.actionLogs / stats.totalLogs * 100).toFixed(1) : 0;
-  const securityPercent = stats.totalLogs > 0 ? (stats.securityLogs / stats.totalLogs * 100).toFixed(1) : 0;
+  const systemPercent = stats.totalLogs > 0 ? Number(((stats.systemLogs / stats.totalLogs) * 100).toFixed(1)) : 0;
+  const userPercent = stats.totalLogs > 0 ? Number(((stats.userLogs / stats.totalLogs) * 100).toFixed(1)) : 0;
+  const actionPercent = stats.totalLogs > 0 ? Number(((stats.actionLogs / stats.totalLogs) * 100).toFixed(1)) : 0;
+  const securityPercent = stats.totalLogs > 0 ? Number(((stats.securityLogs / stats.totalLogs) * 100).toFixed(1)) : 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">

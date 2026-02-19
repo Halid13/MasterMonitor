@@ -1,4 +1,4 @@
-import { SystemLog, LogCategory, LogLevel } from '@/types';
+import { SystemLog, LogLevel } from '@/types';
 
 // Simple in-memory log storage
 let logs: SystemLog[] = [];
@@ -193,7 +193,7 @@ export const logger = {
       results = results.filter((log) => log.username === filters.username);
     }
     if (filters.action) {
-      results = results.filter((log) => log.action.includes(filters.action));
+      results = results.filter((log) => log.action.includes(filters.action!));
     }
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();

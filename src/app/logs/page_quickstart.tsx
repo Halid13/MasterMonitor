@@ -1,7 +1,6 @@
 'use client';
 
-import React from 'react';
-import { ArrowRight, CheckCircle, Zap, BookOpen, Code } from 'lucide-react';
+import { ArrowRight, CheckCircle, Zap, Code } from 'lucide-react';
 
 export default function LogsQuickStartPage() {
   return (

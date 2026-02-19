@@ -1,5 +1,4 @@
 import { logger } from './logger';
-import { ServerStatus } from '@/types';
 
 /**
  * Capture les événements système réels
@@ -173,9 +172,9 @@ export const captureSystemEvents = {
       undefined,
       {
         lastScanDate,
-      },
-      oldStatus,
-      newStatus
+        oldStatus,
+        newStatus,
+      }
     );
   },
 

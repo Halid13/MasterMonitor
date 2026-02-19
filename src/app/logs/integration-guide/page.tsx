@@ -1,5 +1,4 @@
-import React from 'react';
-import { Code, AlertCircle, CheckCircle, BookOpen } from 'lucide-react';
+import { AlertCircle, CheckCircle, BookOpen } from 'lucide-react';
 
 export default function LogsIntegrationGuide() {
   return (

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import MainLayout from '@/components/MainLayout';
-import { Plus, Users, UserCheck, Filter, Search, X, Laptop } from 'lucide-react';
+import { Plus, UserCheck, Filter, Search, X, Laptop } from 'lucide-react';
 import { useDashboardStore } from '@/store/dashboard';
 
 type ADUser = {

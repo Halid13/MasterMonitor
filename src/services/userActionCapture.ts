@@ -92,11 +92,11 @@ export const captureUserActions = {
   ) => {
     logger.logUser(
       'CREATE',
-      username,
+      userId,
       createdBy,
       'info',
       undefined,
-      details
+      { username, ...details }
     );
   },
 
@@ -116,11 +116,12 @@ export const captureUserActions = {
 
     logger.logUser(
       'UPDATE',
-      username,
+      userId,
       modifiedBy,
       'info',
       undefined,
       {
+        username,
         changedFields: Object.keys(changes),
         summary: changesSummary,
         changes,
@@ -140,11 +141,11 @@ export const captureUserActions = {
   ) => {
     logger.logUser(
       'DELETE',
-      username,
+      userId,
       deletedBy,
       'warning',
       undefined,
-      { reason }
+      { username, reason }
     );
   },
 

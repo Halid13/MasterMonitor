@@ -6,7 +6,7 @@ import { Activity, AlertTriangle, TrendingUp, Shield, Download, Trash2, Filter, 
 import { useEffect, useRef, useState } from 'react';
 
 export default function LogsPage() {
-  const { logs, setLogs, addLog, clearLogs } = useDashboardStore();
+  const { logs, setLogs } = useDashboardStore();
   const [loading, setLoading] = useState(false);
   const [filterCategory, setFilterCategory] = useState<LogCategory | ''>('');
   const [filterLevel, setFilterLevel] = useState<LogLevel | ''>('');
@@ -227,12 +227,6 @@ export default function LogsPage() {
     critical: 'bg-red-200 text-red-900 border-red-400',
   };
 
-  const categoryIcons = {
-    system: '⚙️',
-    user: '👤',
-    action: '📝',
-    security: '🔒',
-  };
   const categoryLabels = {
     system: 'Système',
     user: 'Utilisateur',

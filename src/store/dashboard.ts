@@ -97,7 +97,7 @@ interface DashboardStore {
   cleanupOrphanedEquipment: (validUserIds: string[]) => void;
 }
 
-export const useDashboardStore = create<DashboardStore>((set) => ({
+export const useDashboardStore = create<DashboardStore>((set, get) => ({
   // Equipment
   equipment: [],
   setEquipment: (equipment) => set({ equipment }),
@@ -527,7 +527,45 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
     set((state) => ({ logs: [log, ...state.logs].slice(0, 10000) })), // Keep last 10k logs
   clearLogs: () => set({ logs: [] }),
   searchLogs: (filter: LogFilter) => {
-    return new Set<SystemLog>([]).size; // Will be implemented in component
+    const query = (filter.searchQuery || '').toLowerCase();
+
+    return get().logs.filter((log) => {
+      if (filter.category && log.category !== filter.category) return false;
+      if (filter.level && log.level !== filter.level) return false;
+
+      if (filter.module && !log.module.toLowerCase().includes(filter.module.toLowerCase())) {
+        return false;
+      }
+
+      if (filter.username && !(log.username || '').toLowerCase().includes(filter.username.toLowerCase())) {
+        return false;
+      }
+
+      if (filter.dateFrom && new Date(log.timestamp) < new Date(filter.dateFrom)) {
+        return false;
+      }
+
+      if (filter.dateTo && new Date(log.timestamp) > new Date(filter.dateTo)) {
+        return false;
+      }
+
+      if (query) {
+        const haystack = [
+          log.module,
+          log.action,
+          log.objectImpacted,
+          log.username || '',
+          log.oldValue || '',
+          log.newValue || '',
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        if (!haystack.includes(query)) return false;
+      }
+
+      return true;
+    });
   },
 
   // Cleanup equipment assigned to users that no longer exist in AD
