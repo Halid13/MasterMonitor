@@ -253,7 +253,7 @@ export default function LogsPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Gestion des logs</h1>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-500 to-blue-500 bg-clip-text text-transparent">Gestion des logs</h1>
             <p className="text-gray-600 mt-2">Centralisez et consultez tous les journaux système, utilisateurs, actions et sécurité</p>
           </div>
           <div />

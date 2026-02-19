@@ -267,7 +267,7 @@ export default function ServersPage() {
       <div className="space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Supervision des serveurs</h1>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-500 to-orange-500 bg-clip-text text-transparent">Supervision des serveurs</h1>
             <p className="text-gray-600 mt-2">État et métriques de tous vos serveurs</p>
           </div>
           <button
