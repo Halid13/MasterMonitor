@@ -4,6 +4,11 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'MasterMonitor - Dashboard IT',
   description: 'Gestion centralisée de l\'infrastructure informatique',
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
 };
 
 export default function RootLayout({

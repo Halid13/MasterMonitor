@@ -18,6 +18,7 @@ export const MainLayout = ({ children }: LayoutProps) => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [adminName, setAdminName] = useState<string>('Administrateur');
   const [showNotifications, setShowNotifications] = useState(false);
+  const browserTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', []);
 
   const { alerts, logs } = useDashboardStore();
 
@@ -236,13 +237,37 @@ export const MainLayout = ({ children }: LayoutProps) => {
             </div>
 
               {/* Profile */}
-              <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm group cursor-pointer">
-                <div className="text-right leading-tight">
-                  <p className="text-sm font-bold text-slate-900">{adminName}</p>
-                  <p className="text-[11px] text-slate-500">Administrateur</p>
+              <div className="relative group">
+                <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm cursor-pointer">
+                  <div className="text-right leading-tight">
+                    <p className="text-sm font-bold text-slate-900">{adminName}</p>
+                    <p className="text-[11px] text-slate-500">Administrateur</p>
+                  </div>
+                  <div className="h-9 w-9 rounded-full bg-gradient-to-br from-cyan-500 to-indigo-500 flex items-center justify-center text-white font-semibold text-sm shadow-md">
+                    {adminName.charAt(0).toUpperCase() || 'A'}
+                  </div>
                 </div>
-                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-cyan-500 to-indigo-500 flex items-center justify-center text-white font-semibold text-sm shadow-md">
-                  {adminName.charAt(0).toUpperCase() || 'A'}
+
+                <div className="pointer-events-none invisible absolute right-0 top-full z-30 mt-2 w-64 translate-y-1 rounded-2xl border border-slate-200/80 bg-white/95 p-3 opacity-0 shadow-xl backdrop-blur transition-all duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
+                  <p className="text-xs font-semibold text-slate-900">Infos rapides admin</p>
+                  <div className="mt-2 space-y-1.5 text-[11px] text-slate-600">
+                    <div className="flex items-center justify-between">
+                      <span>Compte</span>
+                      <span className="font-medium text-slate-800">{adminName}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Rôle</span>
+                      <span className="font-medium text-slate-800">Administrateur</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Session</span>
+                      <span className="font-medium text-emerald-600">Active</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Fuseau</span>
+                      <span className="font-medium text-slate-800">{browserTimezone}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
