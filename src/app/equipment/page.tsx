@@ -46,7 +46,7 @@ type ADUser = {
 };
 
 export default function EquipmentPage() {
-  const { equipment, users, addEquipment, updateEquipment, deleteEquipment, cleanupOrphanedEquipment } = useDashboardStore();
+  const { equipment, addEquipment, updateEquipment, deleteEquipment, cleanupOrphanedEquipment } = useDashboardStore();
   const [adUsers, setAdUsers] = useState<ADUser[]>([]);
   const [adUsersLoading, setAdUsersLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
