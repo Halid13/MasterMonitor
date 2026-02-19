@@ -72,11 +72,54 @@ export default function ServersPage() {
 
     const syncRemoteServers = async () => {
       const list = serversRef.current.filter((s) => s.id !== 'local-pc');
+
+      let localSnapshot: any = null;
+      try {
+        const localRes = await fetch('/api/system/metrics', { cache: 'no-store' });
+        const localData = await localRes.json();
+        if (localData?.ok) {
+          localSnapshot = localData;
+        }
+      } catch {
+        // ignore local snapshot failure
+      }
+
       await Promise.all(
         list.map(async (server) => {
           if (!server.ipAddress) return;
+
+          const normalizedHost = server.ipAddress.trim().toLowerCase();
+          const localHostNames = new Set([
+            'localhost',
+            '127.0.0.1',
+            localSnapshot?.ipAddress ? String(localSnapshot.ipAddress).toLowerCase() : '',
+            localSnapshot?.host ? String(localSnapshot.host).toLowerCase() : '',
+          ]);
+
+          if (localHostNames.has(normalizedHost) && localSnapshot) {
+            const healthScore = Math.round(100 - Math.max(localSnapshot.cpu || 0, localSnapshot.memory || 0, localSnapshot.disk || 0));
+            updateServerStatus(server.id, {
+              name: localSnapshot.host || server.name,
+              status: 'online',
+              healthScore,
+              metrics: {
+                ...server.metrics,
+                cpuUsage: localSnapshot.cpu ?? 0,
+                memoryUsage: localSnapshot.memory ?? 0,
+                diskUsage: localSnapshot.disk ?? 0,
+                networkIn: localSnapshot.network?.incoming ?? server.metrics.networkIn,
+                networkOut: localSnapshot.network?.outgoing ?? server.metrics.networkOut,
+                uptime: localSnapshot.uptime ?? 0,
+                timestamp: new Date(),
+              },
+              lastHealthCheck: new Date(),
+            });
+            return;
+          }
+
           try {
-            const res = await fetch(`/api/system/remote-metrics?host=${server.ipAddress}`, { cache: 'no-store' });
+            const host = encodeURIComponent(server.ipAddress);
+            const res = await fetch(`/api/system/remote-metrics?host=${host}`, { cache: 'no-store' });
             const data = await res.json();
             if (!isMounted || !data?.ok) {
               updateServerStatus(server.id, { status: 'warning' });
@@ -208,14 +251,24 @@ export default function ServersPage() {
     return `${value.toFixed(0)} o/s`;
   };
 
+  const normalizeHost = (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    const noProtocol = trimmed.replace(/^https?:\/\//i, '');
+    const noPath = noProtocol.split('/')[0];
+    const noPort = noPath.replace(/:(\d+)$/, '');
+    return noPort.trim();
+  };
+
   const handleAddServer = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.ipAddress.trim()) return;
+    const normalizedIpAddress = normalizeHost(formData.ipAddress);
+    if (!formData.name.trim() || !normalizedIpAddress) return;
 
     if (editingId) {
       updateServerStatus(editingId, {
         name: formData.name.trim(),
-        ipAddress: formData.ipAddress.trim(),
+        ipAddress: normalizedIpAddress,
       });
       setEditingId(null);
     } else {
@@ -223,7 +276,7 @@ export default function ServersPage() {
       addServer({
         id,
         name: formData.name.trim(),
-        ipAddress: formData.ipAddress.trim(),
+        ipAddress: normalizedIpAddress,
         status: 'online',
         healthScore: 100,
         metrics: {
