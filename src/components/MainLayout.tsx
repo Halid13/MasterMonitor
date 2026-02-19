@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Menu, X, Bell, LogOut, Settings, Search, Home, Zap, Users, Globe, Cpu, Ticket, FileText } from 'lucide-react';
+import { Menu, X, Bell, LogOut, Settings, Home, Zap, Users, Cpu, Ticket, FileText } from 'lucide-react';
 import { useDashboardStore } from '@/store/dashboard';
 
 interface LayoutProps {
@@ -75,38 +75,37 @@ export const MainLayout = ({ children }: LayoutProps) => {
     { href: '/dashboard', label: 'Tableau de bord', icon: Home, color: 'from-blue-500 to-cyan-500' },
     { href: '/equipment', label: 'Équipements', icon: Cpu, color: 'from-purple-500 to-pink-500' },
     { href: '/users', label: 'Utilisateurs', icon: Users, color: 'from-emerald-500 to-teal-500' },
-    { href: '/ip-addresses', label: 'Sous-réseaux', icon: Globe, color: 'from-orange-500 to-red-500' },
     { href: '/servers', label: 'Serveurs', icon: Zap, color: 'from-yellow-500 to-orange-500' },
     { href: '/tickets', label: 'Tickets', icon: Ticket, color: 'from-pink-500 to-rose-500' },
     { href: '/logs', label: 'Logs', icon: FileText, color: 'from-indigo-500 to-blue-500' },
   ];
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 text-slate-900 overflow-hidden">
+    <div className="flex h-screen bg-slate-100 text-slate-900 overflow-hidden">
       {/* Animated Background */}
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-200/20 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
-        <div className="absolute top-0 right-1/4 w-96 h-96 bg-purple-200/20 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
+      <div className="absolute inset-0 -z-10 overflow-hidden bg-[radial-gradient(circle_at_20%_20%,rgba(56,189,248,0.14),transparent_35%),radial-gradient(circle_at_80%_0%,rgba(99,102,241,0.12),transparent_30%),linear-gradient(180deg,#f8fafc_0%,#eef2ff_50%,#f8fafc_100%)]">
+        <div className="absolute -top-20 right-0 h-80 w-80 rounded-full bg-cyan-300/15 blur-3xl" />
+        <div className="absolute bottom-0 left-10 h-72 w-72 rounded-full bg-indigo-300/10 blur-3xl" />
       </div>
 
       {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'w-72' : 'w-24'} bg-white/40 backdrop-blur-xl border-r border-white/20 flex flex-col transition-all duration-500 ease-out shadow-xl`}>
+      <aside className={`${sidebarOpen ? 'w-72' : 'w-24'} border-r border-slate-200/70 bg-white/85 backdrop-blur-xl flex flex-col transition-all duration-300 ease-out shadow-[0_10px_30px_-18px_rgba(15,23,42,0.35)]`}>
         {/* Logo */}
-        <div className="h-20 flex items-center justify-between px-6 border-b border-white/20">
+        <div className="h-20 flex items-center justify-between px-6 border-b border-slate-200/70">
           {sidebarOpen && (
             <div className="flex items-center gap-3 group">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center font-bold text-white text-sm transform group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300 shadow-lg">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-500 via-blue-500 to-indigo-500 flex items-center justify-center font-bold text-white text-sm transition-transform duration-300 shadow-md">
                 M
               </div>
               <div>
-                <span className="text-base font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">MasterMonitor</span>
-                <p className="text-xs text-slate-500">Dashboard Pro</p>
+                <span className="text-base font-bold text-slate-900">MasterMonitor</span>
+                <p className="text-xs text-slate-500">Control Center</p>
               </div>
             </div>
           )}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-2 rounded-xl text-slate-600 hover:bg-white/40 hover:text-slate-900 transition-all duration-300 hover:scale-110"
+            className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
           >
             {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
@@ -125,10 +124,10 @@ export const MainLayout = ({ children }: LayoutProps) => {
                 onClick={() => router.push(item.href)}
                 onMouseEnter={() => setHoveredItem(item.href)}
                 onMouseLeave={() => setHoveredItem(null)}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-300 group relative overflow-hidden ${
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative overflow-hidden ${
                   isActive
-                    ? `bg-gradient-to-r ${item.color} text-white shadow-lg scale-105`
-                    : 'text-slate-700 hover:bg-white/30'
+                    ? `bg-gradient-to-r ${item.color} text-white shadow-md`
+                    : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
                 {/* Background animation for active items */}
@@ -136,9 +135,9 @@ export const MainLayout = ({ children }: LayoutProps) => {
                   <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 )}
                 
-                <Icon size={20} className={`flex-shrink-0 transition-all duration-300 ${isHovered ? 'scale-125' : ''}`} />
+                <Icon size={18} className={`flex-shrink-0 transition-all duration-200 ${isHovered ? 'scale-110' : ''}`} />
                 {sidebarOpen && (
-                  <span className={`text-sm font-semibold transition-all duration-300 ${isHovered ? 'translate-x-1' : ''}`}>
+                  <span className={`text-sm font-semibold transition-all duration-200 ${isHovered ? 'translate-x-0.5' : ''}`}>
                     {item.label}
                   </span>
                 )}
@@ -153,20 +152,20 @@ export const MainLayout = ({ children }: LayoutProps) => {
         </nav>
 
         {/* Divider */}
-        <div className="px-4 py-4 border-t border-white/20"></div>
+        <div className="px-4 py-4 border-t border-slate-200/70"></div>
 
         {/* Sidebar Footer */}
         <div className="px-4 py-4 space-y-2">
           <button
             onClick={() => router.push('/settings')}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-700 hover:bg-white/40 transition-all duration-300 group hover:scale-105"
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-700 hover:bg-slate-100 transition-colors group"
           >
             <Settings size={18} className="flex-shrink-0 group-hover:rotate-90 transition-transform duration-500" />
             {sidebarOpen && <span className="text-sm font-medium">Paramètres</span>}
           </button>
           <button
             onClick={() => setShowLogoutConfirm(true)}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-rose-600 hover:bg-rose-500/20 transition-all duration-300 group hover:scale-105"
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-rose-600 hover:bg-rose-50 transition-colors group"
           >
             <LogOut size={18} className="flex-shrink-0 group-hover:-translate-x-1 transition-transform duration-300" />
             {sidebarOpen && <span className="text-sm font-medium">Déconnexion</span>}
@@ -177,41 +176,24 @@ export const MainLayout = ({ children }: LayoutProps) => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="relative z-40 h-20 bg-white/30 backdrop-blur-xl border-b border-white/20 px-8 flex items-center justify-between gap-4 shadow-sm">
-          {/* Search Bar */}
-          <div className="flex-1 max-w-xl">
-            <div className="relative group">
-              {/* Animated gradient background */}
-              <div className="absolute -inset-1 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 rounded-2xl opacity-0 group-hover:opacity-75 group-focus-within:opacity-75 transition-all duration-500 blur-lg group-hover:blur-xl"></div>
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl opacity-0 group-hover:opacity-30 group-focus-within:opacity-30 transition-opacity duration-300"></div>
-              
-              <div className="relative flex items-center bg-white/70 backdrop-blur-lg rounded-2xl border-2 border-white/40 hover:border-white/60 focus-within:border-transparent transition-all duration-300 group-hover:bg-white/90">
-                <Search size={20} className="absolute left-4 text-slate-400 group-focus-within:text-blue-500 transition-colors duration-300 group-hover:scale-110" />
-                <input
-                  type="text"
-                  placeholder="Rechercher..."
-                  className="relative flex-1 pl-12 pr-4 py-3.5 bg-transparent text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all duration-300"
-                />
-                <kbd className="hidden sm:inline-block px-3 py-1.5 text-xs font-semibold text-slate-500 bg-slate-100/50 rounded-lg mr-3">⌘K</kbd>
-              </div>
-            </div>
-          </div>
+        <header className="relative z-40 border-b border-slate-200/70 bg-white/80 px-6 py-4 backdrop-blur-xl shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium text-slate-600">Espace de supervision et d'administration de la plateforme.</p>
 
-          {/* Right Actions */}
-          <div className="flex items-center gap-4">
-            <div className="relative isolate">
+            <div className="flex items-center gap-3">
+              <div className="relative isolate">
               <button
                 onClick={() => setShowNotifications((prev) => !prev)}
-                className="relative p-3 text-slate-600 hover:text-slate-900 hover:bg-white/40 rounded-xl transition-all duration-300 group hover:scale-110"
+                className="relative rounded-xl border border-slate-200 bg-white p-2.5 text-slate-700 transition-colors hover:bg-slate-50"
               >
-                <Bell size={20} className="group-hover:animate-bounce" />
+                <Bell size={18} />
                 {notificationItems.length > 0 && (
-                  <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-gradient-to-r from-red-500 to-pink-500 animate-pulse shadow-lg" />
+                  <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
                 )}
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 mt-3 w-80 rounded-2xl bg-white/95 border border-slate-200/60 shadow-2xl p-4 z-[60]">
+                <div className="absolute right-0 mt-3 w-80 rounded-2xl bg-white border border-slate-200 shadow-2xl p-4 z-[60]">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-sm font-bold text-slate-900">Notifications</h4>
                     <button
@@ -253,14 +235,15 @@ export const MainLayout = ({ children }: LayoutProps) => {
               )}
             </div>
 
-            {/* Profile */}
-            <div className="flex items-center gap-3 pl-4 border-l border-white/20 group cursor-pointer">
-              <div className="text-right">
-                <p className="text-sm font-bold text-slate-900">{adminName}</p>
-                <p className="text-xs text-slate-500">Administrateur</p>
-              </div>
-              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center text-white font-semibold text-sm transform group-hover:scale-110 group-hover:rotate-12 transition-transform duration-300 shadow-lg">
-                A
+              {/* Profile */}
+              <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm group cursor-pointer">
+                <div className="text-right leading-tight">
+                  <p className="text-sm font-bold text-slate-900">{adminName}</p>
+                  <p className="text-[11px] text-slate-500">Administrateur</p>
+                </div>
+                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-cyan-500 to-indigo-500 flex items-center justify-center text-white font-semibold text-sm shadow-md">
+                  {adminName.charAt(0).toUpperCase() || 'A'}
+                </div>
               </div>
             </div>
           </div>
