@@ -112,36 +112,40 @@ export default function LogsPage() {
   }, [filterCategory, filterLevel, filterModule, filterUsername, searchQuery, page, setLogs]);
 
   // Handle export
-  const handleExport = () => {
-    const csv = [
-      ['Date', 'Catégorie', 'Niveau', 'Module', 'Utilisateur', 'Action', 'Objet', 'IP', 'Ancienne valeur', 'Nouvelle valeur'].join(','),
-      ...logs.map((log) =>
-        [
-          new Date(log.timestamp).toISOString(),
-          log.category,
-          log.level,
-          log.module,
-          log.username || 'N/A',
-          log.action,
-          log.objectImpacted,
-          log.ipSource || 'N/A',
-          log.oldValue || 'N/A',
-          log.newValue || 'N/A',
-        ]
-          .map((v) => `"${v}"`)
-          .join(',')
-      ),
-    ].join('\n');
+  const handleExport = async () => {
+    const XLSX = await import('xlsx');
 
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `logs-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    const headers = ['Date', 'Catégorie', 'Niveau', 'Module', 'Utilisateur', 'Action', 'Objet', 'IP', 'Ancienne valeur', 'Nouvelle valeur'];
+    const rows = logs.map((log) => [
+      new Date(log.timestamp).toISOString(),
+      log.category,
+      log.level,
+      log.module,
+      log.username || 'N/A',
+      log.action,
+      log.objectImpacted,
+      log.ipSource || 'N/A',
+      log.oldValue || 'N/A',
+      log.newValue || 'N/A',
+    ]);
+
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    worksheet['!cols'] = [
+      { wch: 24 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 28 },
+      { wch: 30 },
+      { wch: 18 },
+      { wch: 30 },
+      { wch: 30 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Logs');
+    XLSX.writeFile(workbook, `logs-${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   // Handle purge
@@ -480,7 +484,7 @@ export default function LogsPage() {
                 onClick={handleExport}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-700 text-sm font-semibold hover:bg-emerald-500/20 ring-1 ring-emerald-400/30"
               >
-                <Download size={16} /> Export CSV
+                <Download size={16} /> Export Logs
               </button>
               <button
                 onClick={() => setShowPurgeModal(true)}
