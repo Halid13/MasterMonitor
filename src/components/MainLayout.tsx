@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Menu, X, Bell, LogOut, Settings, Home, Zap, Users, Cpu, Ticket, FileText } from 'lucide-react';
+import { Menu, X, Bell, LogOut, Settings, LayoutDashboard, Users, Server, Ticket, FileText, Shield, Monitor } from 'lucide-react';
 import { useDashboardStore } from '@/store/dashboard';
 
 interface LayoutProps {
@@ -72,10 +72,10 @@ export const MainLayout = ({ children }: LayoutProps) => {
   };
 
   const menuItems = [
-    { href: '/dashboard', label: 'Tableau de bord', icon: Home, color: 'from-blue-500 to-cyan-500' },
-    { href: '/equipment', label: 'Équipements', icon: Cpu, color: 'from-purple-500 to-pink-500' },
+    { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, color: 'from-blue-500 to-cyan-500' },
+    { href: '/equipment', label: 'Équipements', icon: Monitor, color: 'from-purple-500 to-pink-500' },
     { href: '/users', label: 'Utilisateurs', icon: Users, color: 'from-emerald-500 to-teal-500' },
-    { href: '/servers', label: 'Serveurs', icon: Zap, color: 'from-yellow-500 to-orange-500' },
+    { href: '/servers', label: 'Serveurs', icon: Server, color: 'from-yellow-500 to-orange-500' },
     { href: '/tickets', label: 'Tickets', icon: Ticket, color: 'from-pink-500 to-rose-500' },
     { href: '/logs', label: 'Logs', icon: FileText, color: 'from-indigo-500 to-blue-500' },
   ];
@@ -92,17 +92,17 @@ export const MainLayout = ({ children }: LayoutProps) => {
       <aside className={`${sidebarOpen ? 'w-72' : 'w-24'} border-r border-slate-200/70 bg-white/85 backdrop-blur-xl flex flex-col transition-all duration-300 ease-out shadow-[0_10px_30px_-18px_rgba(15,23,42,0.35)]`}>
         {/* Logo */}
         <div className="h-20 flex items-center justify-between px-6 border-b border-slate-200/70">
-          {sidebarOpen && (
-            <div className="flex items-center gap-3 group">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-500 via-blue-500 to-indigo-500 flex items-center justify-center font-bold text-white text-sm transition-transform duration-300 shadow-md">
-                M
-              </div>
+          <div className="flex items-center gap-3 group">
+            <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-cyan-500 via-blue-500 to-violet-500 flex items-center justify-center text-white shadow-md ring-1 ring-cyan-200/60">
+              <Shield size={20} />
+            </div>
+            {sidebarOpen && (
               <div>
                 <span className="text-base font-bold text-slate-900">MasterMonitor</span>
-                <p className="text-xs text-slate-500">Control Center</p>
+                <p className="text-xs text-slate-500">Operations Hub</p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
