@@ -26,6 +26,14 @@ const defaultSettings = {
   adServer: '192.168.203.128',
   alertDigest: 'quotidien',
   autoRefresh: '30s',
+  cpuWarningThreshold: '80',
+  memoryWarningThreshold: '85',
+  diskWarningThreshold: '90',
+  anomalyDetection: true,
+  retentionDays: '90',
+  backupFrequency: 'quotidien',
+  streamingEnabled: true,
+  maintenanceWindow: '02:00-03:00',
 };
 
 type Settings = typeof defaultSettings;
@@ -293,9 +301,50 @@ export default function SettingsPage() {
             </div>
           </section>
 
+          <section className={`${panelClassName} ring-1 ring-cyan-100/70`}>
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-gradient-to-r from-cyan-100/40 to-transparent" />
+            <h2 className="relative mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-200/70 bg-cyan-50/80 px-2.5 py-1 text-sm font-semibold text-cyan-700">📊 Supervision</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-medium text-slate-600">Seuil alerte CPU</label>
+                <select value={settings.cpuWarningThreshold} onChange={(event) => update('cpuWarningThreshold', event.target.value)} className={fieldClassName}>
+                  <option value="70">70%</option>
+                  <option value="75">75%</option>
+                  <option value="80">80%</option>
+                  <option value="85">85%</option>
+                  <option value="90">90%</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Seuil alerte RAM</label>
+                <select value={settings.memoryWarningThreshold} onChange={(event) => update('memoryWarningThreshold', event.target.value)} className={fieldClassName}>
+                  <option value="75">75%</option>
+                  <option value="80">80%</option>
+                  <option value="85">85%</option>
+                  <option value="90">90%</option>
+                  <option value="95">95%</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Seuil alerte disque</label>
+                <select value={settings.diskWarningThreshold} onChange={(event) => update('diskWarningThreshold', event.target.value)} className={fieldClassName}>
+                  <option value="75">75%</option>
+                  <option value="80">80%</option>
+                  <option value="85">85%</option>
+                  <option value="90">90%</option>
+                  <option value="95">95%</option>
+                </select>
+              </div>
+              <label className="mt-5 flex h-9 items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm">
+                <span>Détection d'anomalies</span>
+                <input type="checkbox" checked={settings.anomalyDetection} onChange={(event) => update('anomalyDetection', event.target.checked)} className="h-4 w-4" />
+              </label>
+            </div>
+          </section>
+
           <section className={`${panelClassName} ring-1 ring-indigo-100/70`}>
             <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-gradient-to-r from-indigo-100/40 to-transparent" />
-            <h2 className="relative mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-200/70 bg-indigo-50/80 px-2.5 py-1 text-sm font-semibold text-indigo-700">🌍 Préférences & AD</h2>
+            <h2 className="relative mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-200/70 bg-indigo-50/80 px-2.5 py-1 text-sm font-semibold text-indigo-700">🌍 Préférences</h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="text-xs font-medium text-slate-600">Langue</label>
@@ -324,14 +373,6 @@ export default function SettingsPage() {
                   <option value="confort">Confort</option>
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600">Domaine AD</label>
-                <input value={settings.adDomain} onChange={(event) => update('adDomain', event.target.value)} className={fieldClassName} />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600">Serveur AD</label>
-                <input value={settings.adServer} onChange={(event) => update('adServer', event.target.value)} className={fieldClassName} />
-              </div>
               <div className="sm:col-span-2">
                 <label className="text-xs font-medium text-slate-600">Auto-refresh dashboard</label>
                 <select value={settings.autoRefresh} onChange={(event) => update('autoRefresh', event.target.value)} className={fieldClassName}>
@@ -340,6 +381,54 @@ export default function SettingsPage() {
                   <option value="60s">60 secondes</option>
                 </select>
               </div>
+            </div>
+          </section>
+
+          <section className={`${panelClassName} ring-1 ring-violet-100/70`}>
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-gradient-to-r from-violet-100/40 to-transparent" />
+            <h2 className="relative mb-3 inline-flex items-center gap-2 rounded-full border border-violet-200/70 bg-violet-50/80 px-2.5 py-1 text-sm font-semibold text-violet-700">🛡️ Active Directory</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-medium text-slate-600">Domaine AD</label>
+                <input value={settings.adDomain} onChange={(event) => update('adDomain', event.target.value)} className={fieldClassName} />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Serveur AD</label>
+                <input value={settings.adServer} onChange={(event) => update('adServer', event.target.value)} className={fieldClassName} />
+              </div>
+            </div>
+          </section>
+
+          <section className={`${panelClassName} ring-1 ring-amber-100/70`}>
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-gradient-to-r from-amber-100/40 to-transparent" />
+            <h2 className="relative mb-3 inline-flex items-center gap-2 rounded-full border border-amber-200/70 bg-amber-50/80 px-2.5 py-1 text-sm font-semibold text-amber-700">🗄️ Logs & Sauvegarde</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-medium text-slate-600">Rétention des logs</label>
+                <select value={settings.retentionDays} onChange={(event) => update('retentionDays', event.target.value)} className={fieldClassName}>
+                  <option value="30">30 jours</option>
+                  <option value="60">60 jours</option>
+                  <option value="90">90 jours</option>
+                  <option value="180">180 jours</option>
+                  <option value="365">365 jours</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Fréquence de sauvegarde</label>
+                <select value={settings.backupFrequency} onChange={(event) => update('backupFrequency', event.target.value)} className={fieldClassName}>
+                  <option value="horaire">Horaire</option>
+                  <option value="quotidien">Quotidien</option>
+                  <option value="hebdomadaire">Hebdomadaire</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Fenêtre de maintenance</label>
+                <input value={settings.maintenanceWindow} onChange={(event) => update('maintenanceWindow', event.target.value)} className={fieldClassName} placeholder="02:00-03:00" />
+              </div>
+              <label className="mt-5 flex h-9 items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm">
+                <span>Streaming des logs</span>
+                <input type="checkbox" checked={settings.streamingEnabled} onChange={(event) => update('streamingEnabled', event.target.checked)} className="h-4 w-4" />
+              </label>
             </div>
           </section>
         </div>
