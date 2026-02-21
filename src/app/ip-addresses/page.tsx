@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { Subnet } from '@/types';
-import { Plus, Trash2, Edit2, X } from 'lucide-react';
+import { Calculator, Copy, Edit2, Network, Plus, RefreshCw, Trash2, Wifi } from 'lucide-react';
 
 type SubnetForm = {
   name: string;
@@ -17,21 +17,36 @@ type SubnetForm = {
   allocation: string;
 };
 
-type SubnetCalculation = {
+type SubnetPlan = {
   valid: boolean;
   error?: string;
   subnetCidr?: string;
   networkAddress?: string;
+  broadcastAddress?: string;
+  firstIp?: string;
+  lastIp?: string;
   netmask?: string;
-  rangeStart?: string;
-  rangeEnd?: string;
+  wildcard?: string;
   usableHosts?: number;
+  totalIps?: number;
   prefix?: number;
   networkInt?: number;
   broadcastInt?: number;
   totalSubnets?: number;
   subnetIndex?: number;
   actualSubnets?: number;
+};
+
+type PingResponse = {
+  ok: boolean;
+  target: string;
+  elapsedMs?: number;
+  sent?: number;
+  received?: number;
+  avgLatencyMs?: number | null;
+  reachable?: boolean;
+  error?: string;
+  details?: string;
 };
 
 const ipToInt = (ip: unknown) => {
@@ -42,12 +57,7 @@ const ipToInt = (ip: unknown) => {
   if (parts.length !== 4) return null;
   const numbers = parts.map((part) => Number(part));
   if (numbers.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return null;
-  return (
-    (numbers[0] << 24) +
-    (numbers[1] << 16) +
-    (numbers[2] << 8) +
-    numbers[3]
-  ) >>> 0;
+  return ((numbers[0] << 24) + (numbers[1] << 16) + (numbers[2] << 8) + numbers[3]) >>> 0;
 };
 
 const intToIp = (value: number) => {
@@ -64,36 +74,46 @@ const maskFromPrefix = (prefix: number) => {
   return (0xffffffff << (32 - prefix)) >>> 0;
 };
 
+const prefixFromMask = (mask: string) => {
+  const maskInt = ipToInt(mask);
+  if (maskInt === null) return null;
+  const binary = maskInt.toString(2).padStart(32, '0');
+  if (!/^1*0*$/.test(binary)) return null;
+  return (binary.match(/1/g) || []).length;
+};
+
 const parseCidr = (cidr: string) => {
   const [ip, prefixStr] = cidr.split('/');
   if (!ip || prefixStr === undefined) return null;
   const prefix = Number(prefixStr);
-  if (Number.isNaN(prefix) || prefix < 0 || prefix > 32) return null;
+  if (!Number.isFinite(prefix) || prefix < 0 || prefix > 32) return null;
   const ipInt = ipToInt(ip);
   if (ipInt === null) return null;
   return { ipInt, prefix };
 };
 
+const getTotalIps = (prefix: number) => 2 ** (32 - prefix);
+
 const getUsableHosts = (prefix: number) => {
-  const total = 2 ** (32 - prefix);
+  const total = getTotalIps(prefix);
   if (prefix === 32) return 1;
   if (prefix === 31) return 2;
   return Math.max(total - 2, 0);
 };
 
 const calculatePrefixForHosts = (hostCount: number) => {
-  const requiredHosts = Math.floor(hostCount);
-  if (Number.isNaN(requiredHosts) || requiredHosts <= 0) return null;
+  const required = Math.floor(hostCount);
+  if (!Number.isFinite(required) || required <= 0) return null;
   for (let prefix = 32; prefix >= 0; prefix -= 1) {
-    if (getUsableHosts(prefix) >= requiredHosts) return prefix;
+    if (getUsableHosts(prefix) >= required) return prefix;
   }
   return null;
 };
 
 const calculatePrefixForSubnets = (mainPrefix: number, subnetCount: number) => {
-  const desiredSubnets = Math.floor(subnetCount);
-  if (Number.isNaN(desiredSubnets) || desiredSubnets <= 0) return null;
-  const extraBits = Math.ceil(Math.log2(desiredSubnets));
+  const desired = Math.floor(subnetCount);
+  if (!Number.isFinite(desired) || desired <= 0) return null;
+  const extraBits = Math.ceil(Math.log2(desired));
   const prefix = mainPrefix + extraBits;
   if (prefix > 32) return null;
   return { prefix, actualSubnets: 2 ** extraBits };
@@ -101,11 +121,34 @@ const calculatePrefixForSubnets = (mainPrefix: number, subnetCount: number) => {
 
 const hasOverlap = (start: number, end: number, existingSubnets: Subnet[]) => {
   return existingSubnets.some((subnet) => {
-    const subnetStart = ipToInt(subnet.rangeStart);
-    const subnetEnd = ipToInt(subnet.rangeEnd);
-    if (subnetStart === null || subnetEnd === null) return false;
-    return !(end < subnetStart || start > subnetEnd);
+    const s = ipToInt(subnet.rangeStart);
+    const e = ipToInt(subnet.rangeEnd);
+    if (s === null || e === null) return false;
+    return !(end < s || start > e);
   });
+};
+
+const buildNetworkDetails = (networkInt: number, prefix: number): SubnetPlan => {
+  const mask = maskFromPrefix(prefix);
+  const broadcastInt = (networkInt | (~mask >>> 0)) >>> 0;
+  const first = prefix >= 31 ? networkInt : networkInt + 1;
+  const last = prefix >= 31 ? broadcastInt : broadcastInt - 1;
+
+  return {
+    valid: true,
+    subnetCidr: `${intToIp(networkInt)}/${prefix}`,
+    networkAddress: intToIp(networkInt),
+    broadcastAddress: intToIp(broadcastInt),
+    firstIp: intToIp(first >>> 0),
+    lastIp: intToIp(last >>> 0),
+    netmask: intToIp(mask),
+    wildcard: intToIp((~mask) >>> 0),
+    usableHosts: getUsableHosts(prefix),
+    totalIps: getTotalIps(prefix),
+    prefix,
+    networkInt,
+    broadcastInt,
+  };
 };
 
 const computeSubnetPlan = (
@@ -116,35 +159,27 @@ const computeSubnetPlan = (
   subnetIndexMode: 'auto' | 'index',
   subnetIndex: number,
   existingSubnets: Subnet[],
-): SubnetCalculation => {
-  if (!mainCidr) {
-    return { valid: false };
-  }
+): SubnetPlan => {
+  if (!mainCidr) return { valid: false };
 
   const main = parseCidr(mainCidr);
-  if (!main) {
-    return { valid: false, error: 'Réseau principal invalide (ex: 192.168.0.0/16)' };
-  }
+  if (!main) return { valid: false, error: 'Réseau principal invalide (ex: 192.168.0.0/16)' };
 
   let prefix: number | null = null;
   let actualSubnets: number | undefined;
 
   if (mode === 'hosts') {
     prefix = calculatePrefixForHosts(hostCount);
-    if (prefix === null) {
-      return { valid: false, error: 'Nombre d’hôtes invalide ou trop élevé' };
-    }
+    if (prefix === null) return { valid: false, error: 'Nombre d’hôtes invalide' };
   } else {
-    const subnetResult = calculatePrefixForSubnets(main.prefix, subnetCount);
-    if (!subnetResult) {
-      return { valid: false, error: 'Nombre de sous-réseaux invalide pour ce réseau principal' };
-    }
-    prefix = subnetResult.prefix;
-    actualSubnets = subnetResult.actualSubnets;
+    const result = calculatePrefixForSubnets(main.prefix, subnetCount);
+    if (!result) return { valid: false, error: 'Nombre de sous-réseaux invalide' };
+    prefix = result.prefix;
+    actualSubnets = result.actualSubnets;
   }
 
   if (prefix < main.prefix) {
-    return { valid: false, error: 'Le réseau principal est trop petit pour ce plan de sous-réseaux' };
+    return { valid: false, error: 'Le réseau principal est trop petit pour ce plan' };
   }
 
   const mainMask = maskFromPrefix(main.prefix);
@@ -154,52 +189,31 @@ const computeSubnetPlan = (
   const totalSubnets = 2 ** (prefix - main.prefix);
 
   let chosenIndex: number | null = null;
-
   if (subnetIndexMode === 'index') {
-    const requestedIndex = Math.floor(subnetIndex) - 1;
-    if (Number.isNaN(requestedIndex) || requestedIndex < 0 || requestedIndex >= totalSubnets) {
-      return { valid: false, error: `Index invalide. Choisissez entre 1 et ${totalSubnets}` };
+    const requested = Math.floor(subnetIndex) - 1;
+    if (!Number.isFinite(requested) || requested < 0 || requested >= totalSubnets) {
+      return { valid: false, error: `Index invalide (1 → ${totalSubnets})` };
     }
-    chosenIndex = requestedIndex;
+    chosenIndex = requested;
   } else {
-    for (let index = 0; index < totalSubnets; index += 1) {
-      const candidateStart = (mainNetwork + index * subnetSize) >>> 0;
-      const candidateEnd = (candidateStart + subnetSize - 1) >>> 0;
-      if (candidateEnd > mainBroadcast) continue;
-      if (!hasOverlap(candidateStart, candidateEnd, existingSubnets)) {
-        chosenIndex = index;
+    for (let idx = 0; idx < totalSubnets; idx += 1) {
+      const start = (mainNetwork + idx * subnetSize) >>> 0;
+      const end = (start + subnetSize - 1) >>> 0;
+      if (end > mainBroadcast) continue;
+      if (!hasOverlap(start, end, existingSubnets)) {
+        chosenIndex = idx;
         break;
       }
     }
   }
 
-  if (chosenIndex === null) {
-    return { valid: false, error: 'Aucun sous-réseau disponible pour ce plan' };
-  }
+  if (chosenIndex === null) return { valid: false, error: 'Aucun sous-réseau disponible' };
 
   const networkInt = (mainNetwork + chosenIndex * subnetSize) >>> 0;
-  const broadcastInt = (networkInt + subnetSize - 1) >>> 0;
-
-  if (networkInt < mainNetwork || broadcastInt > mainBroadcast) {
-    return { valid: false, error: 'Sous-réseau hors du réseau principal' };
-  }
-
-  const subnetMask = maskFromPrefix(prefix);
-  const usableHosts = getUsableHosts(prefix);
-  const rangeStartInt = prefix >= 31 ? networkInt : (networkInt + 1) >>> 0;
-  const rangeEndInt = prefix >= 31 ? broadcastInt : (broadcastInt - 1) >>> 0;
+  const details = buildNetworkDetails(networkInt, prefix);
 
   return {
-    valid: true,
-    subnetCidr: `${intToIp(networkInt)}/${prefix}`,
-    networkAddress: intToIp(networkInt),
-    netmask: intToIp(subnetMask),
-    rangeStart: intToIp(rangeStartInt),
-    rangeEnd: intToIp(rangeEndInt),
-    usableHosts,
-    prefix,
-    networkInt,
-    broadcastInt,
+    ...details,
     totalSubnets,
     subnetIndex: chosenIndex + 1,
     actualSubnets,
@@ -217,16 +231,33 @@ const isIpInRange = (ip: string, start: string, end: string) => {
 export default function IPAddressesPage() {
   const {
     subnets: storeSubnets,
+    ipAddresses: storeIpAddresses,
     addSubnet,
     updateSubnet,
     deleteSubnet,
-    ipAddresses: storeIpAddresses,
   } = useDashboardStore();
+
+  const subnets = Array.isArray(storeSubnets) ? storeSubnets : [];
+  const ipAddresses = Array.isArray(storeIpAddresses) ? storeIpAddresses : [];
+
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const subnets = Array.isArray(storeSubnets) ? storeSubnets : [];
-  const ipAddresses = Array.isArray(storeIpAddresses) ? storeIpAddresses : [];
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const [pingTarget, setPingTarget] = useState('');
+  const [pingLoading, setPingLoading] = useState(false);
+  const [pingLive, setPingLive] = useState(false);
+  const [pingResult, setPingResult] = useState<PingResponse | null>(null);
+
+  const [calcMode, setCalcMode] = useState<'cidr' | 'mask' | 'hosts' | 'subnets'>('cidr');
+  const [calcCidr, setCalcCidr] = useState('192.168.10.0/24');
+  const [calcIp, setCalcIp] = useState('192.168.10.0');
+  const [calcMask, setCalcMask] = useState('255.255.255.0');
+  const [calcMainCidr, setCalcMainCidr] = useState('192.168.0.0/16');
+  const [calcHosts, setCalcHosts] = useState(120);
+  const [calcSubnets, setCalcSubnets] = useState(8);
+
   const [formData, setFormData] = useState<SubnetForm>({
     name: '',
     mainNetworkCidr: '',
@@ -238,91 +269,151 @@ export default function IPAddressesPage() {
     allocation: '',
   });
 
-  const calculation = useMemo(
-    () =>
-      computeSubnetPlan(
-        formData.mainNetworkCidr,
-        formData.calculationMode,
-        formData.hostCount,
-        formData.subnetCount,
-        formData.subnetIndexMode,
-        formData.subnetIndex,
-        subnets.filter((subnet) => subnet.id !== editingId),
-      ),
-    [
+  const formPlan = useMemo(
+    () => computeSubnetPlan(
       formData.mainNetworkCidr,
       formData.calculationMode,
       formData.hostCount,
       formData.subnetCount,
       formData.subnetIndexMode,
       formData.subnetIndex,
-      subnets,
-      editingId,
-    ],
+      subnets.filter((s) => s.id !== editingId),
+    ),
+    [formData, subnets, editingId],
   );
 
-  const usedCountBySubnet = (subnet: Subnet) => {
-    if (!subnet.rangeStart || !subnet.rangeEnd) return 0;
-    return ipAddresses.filter((ip) => {
-      if (!ip || typeof ip.address !== 'string') return false;
-      return isIpInRange(ip.address, subnet.rangeStart, subnet.rangeEnd);
-    }).length;
+  const subnetMetrics = useMemo(() => {
+    return subnets.map((subnet) => {
+      const used = ipAddresses.filter((ip) =>
+        ip?.address && isIpInRange(ip.address, subnet.rangeStart, subnet.rangeEnd),
+      ).length;
+      const totalIps = getTotalIps(subnet.prefix);
+      const free = Math.max(subnet.usableHosts - used, 0);
+      const occupancy = subnet.usableHosts > 0 ? Math.min((used / subnet.usableHosts) * 100, 100) : 0;
+      const conflicts = subnets
+        .filter((other) => other.id !== subnet.id)
+        .filter((other) => {
+          const aStart = ipToInt(subnet.rangeStart);
+          const aEnd = ipToInt(subnet.rangeEnd);
+          const bStart = ipToInt(other.rangeStart);
+          const bEnd = ipToInt(other.rangeEnd);
+          if (aStart === null || aEnd === null || bStart === null || bEnd === null) return false;
+          return !(aEnd < bStart || aStart > bEnd);
+        })
+        .map((c) => c.name);
+
+      return {
+        subnet,
+        used,
+        free,
+        totalIps,
+        occupancy,
+        conflicts,
+      };
+    });
+  }, [subnets, ipAddresses]);
+
+  const totals = useMemo(() => {
+    const totalSubnets = subnetMetrics.length;
+    const totalIps = subnetMetrics.reduce((sum, item) => sum + item.totalIps, 0);
+    const totalUsable = subnetMetrics.reduce((sum, item) => sum + item.subnet.usableHosts, 0);
+    const totalUsed = subnetMetrics.reduce((sum, item) => sum + item.used, 0);
+    const totalFree = Math.max(totalUsable - totalUsed, 0);
+    const conflicts = subnetMetrics.reduce((sum, item) => sum + (item.conflicts.length > 0 ? 1 : 0), 0);
+    const avgOccupancy = totalUsable > 0 ? (totalUsed / totalUsable) * 100 : 0;
+
+    return {
+      totalSubnets,
+      totalIps,
+      totalUsable,
+      totalUsed,
+      totalFree,
+      conflicts,
+      avgOccupancy,
+    };
+  }, [subnetMetrics]);
+
+  const calculatorResult = useMemo((): SubnetPlan => {
+    if (calcMode === 'cidr') {
+      const parsed = parseCidr(calcCidr);
+      if (!parsed) return { valid: false, error: 'CIDR invalide.' };
+      const mask = maskFromPrefix(parsed.prefix);
+      const network = (parsed.ipInt & mask) >>> 0;
+      return buildNetworkDetails(network, parsed.prefix);
+    }
+
+    if (calcMode === 'mask') {
+      const ipInt = ipToInt(calcIp);
+      const prefix = prefixFromMask(calcMask);
+      if (ipInt === null || prefix === null) return { valid: false, error: 'IP ou masque invalide.' };
+      const network = (ipInt & maskFromPrefix(prefix)) >>> 0;
+      return buildNetworkDetails(network, prefix);
+    }
+
+    if (calcMode === 'hosts') {
+      return computeSubnetPlan(calcMainCidr, 'hosts', calcHosts, 0, 'index', 1, []);
+    }
+
+    return computeSubnetPlan(calcMainCidr, 'subnets', 0, calcSubnets, 'index', 1, []);
+  }, [calcMode, calcCidr, calcIp, calcMask, calcMainCidr, calcHosts, calcSubnets]);
+
+  const binaryView = useMemo(() => {
+    if (!calculatorResult.valid || !calculatorResult.networkAddress || !calculatorResult.netmask) {
+      return null;
+    }
+
+    const toBinary = (ip: string) => ip
+      .split('.')
+      .map((octet) => Number(octet).toString(2).padStart(8, '0'))
+      .join('.');
+
+    return {
+      network: toBinary(calculatorResult.networkAddress),
+      mask: toBinary(calculatorResult.netmask),
+    };
+  }, [calculatorResult]);
+
+  const runPingTest = async () => {
+    if (!pingTarget.trim()) {
+      setPingResult({ ok: false, target: '', error: 'Saisissez une IP ou un hostname.' });
+      return;
+    }
+
+    setPingLoading(true);
+    try {
+      const target = encodeURIComponent(pingTarget.trim());
+      const res = await fetch(`/api/system/ping?target=${target}&count=4`, { cache: 'no-store' });
+      const data = await res.json();
+      setPingResult(data);
+    } catch {
+      setPingResult({ ok: false, target: pingTarget.trim(), error: 'Erreur réseau pendant le test ICMP.' });
+    } finally {
+      setPingLoading(false);
+    }
   };
 
-  const totalUsable = useMemo(() => subnets.reduce((sum, subnet) => sum + subnet.usableHosts, 0), [subnets]);
-  const totalUsed = useMemo(
-    () => subnets.reduce((sum, subnet) => sum + usedCountBySubnet(subnet), 0),
-    [subnets, ipAddresses],
-  );
+  useEffect(() => {
+    if (!pingLive || !pingTarget.trim()) return;
+    void runPingTest();
+    const timer = setInterval(() => {
+      void runPingTest();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [pingLive, pingTarget]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!calculation.valid) {
-      setFormError(calculation.error || 'Informations insuffisantes pour calculer le sous-réseau');
-      return;
+  const copyValue = async (key: string, value?: string | number) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(String(value));
+      setCopiedField(key);
+      setTimeout(() => setCopiedField(null), 1200);
+    } catch {
+      setCopiedField(null);
     }
+  };
 
-    const overlaps = subnets.some((subnet) => {
-      if (editingId && subnet.id === editingId) return false;
-      const subnetStart = ipToInt(subnet.rangeStart);
-      const subnetEnd = ipToInt(subnet.rangeEnd);
-      if (subnetStart === null || subnetEnd === null) return false;
-      if (calculation.networkInt === undefined || calculation.broadcastInt === undefined) return false;
-      return !(calculation.broadcastInt < subnetStart || calculation.networkInt > subnetEnd);
-    });
-
-    if (overlaps) {
-      setFormError('Ce sous-réseau chevauche un sous-réseau existant');
-      return;
-    }
-
-    const payload = {
-      name: formData.name.trim() || `Sous-réseau ${calculation.subnetCidr}`,
-      mainNetworkCidr: formData.mainNetworkCidr.trim(),
-      subnetCidr: calculation.subnetCidr as string,
-      networkAddress: calculation.networkAddress as string,
-      prefix: calculation.prefix as number,
-      netmask: calculation.netmask as string,
-      rangeStart: calculation.rangeStart as string,
-      rangeEnd: calculation.rangeEnd as string,
-      usableHosts: calculation.usableHosts as number,
-      allocation: formData.allocation.trim(),
-      updatedAt: new Date(),
-    };
-
-    if (editingId) {
-      updateSubnet(editingId, payload);
-      setEditingId(null);
-    } else {
-      const newSubnet: Subnet = {
-        id: Date.now().toString(),
-        createdAt: new Date(),
-        ...payload,
-      };
-      addSubnet(newSubnet);
-    }
-
+  const resetForm = () => {
+    setEditingId(null);
     setFormError(null);
     setFormData({
       name: '',
@@ -334,403 +425,303 @@ export default function IPAddressesPage() {
       subnetIndex: 1,
       allocation: '',
     });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!formPlan.valid) {
+      setFormError(formPlan.error || 'Données invalides');
+      return;
+    }
+
+    const payload = {
+      name: formData.name.trim() || `Sous-réseau ${formPlan.subnetCidr}`,
+      mainNetworkCidr: formData.mainNetworkCidr.trim(),
+      subnetCidr: formPlan.subnetCidr as string,
+      networkAddress: formPlan.networkAddress as string,
+      prefix: formPlan.prefix as number,
+      netmask: formPlan.netmask as string,
+      rangeStart: formPlan.firstIp as string,
+      rangeEnd: formPlan.lastIp as string,
+      usableHosts: formPlan.usableHosts as number,
+      allocation: formData.allocation.trim(),
+      updatedAt: new Date(),
+    };
+
+    if (editingId) {
+      updateSubnet(editingId, payload);
+    } else {
+      addSubnet({
+        id: Date.now().toString(),
+        createdAt: new Date(),
+        ...payload,
+      });
+    }
+
     setShowModal(false);
+    resetForm();
   };
 
   return (
     <MainLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">Gestion des sous-réseaux</h1>
-            <p className="text-slate-600 mt-2">Créez des sous-réseaux à partir d’un réseau principal et suivez l’utilisation des IP</p>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 bg-clip-text text-transparent">Gestion des sous-réseaux</h1>
+            <p className="text-slate-600 mt-2">Visualisation, test ICMP en temps réel et calculateur de subnet interactif.</p>
           </div>
           <button
-            onClick={() => {
-              setFormError(null);
-              setShowModal(true);
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
+            onClick={() => { resetForm(); setShowModal(true); }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-semibold shadow-md hover:shadow-lg"
           >
-            <Plus size={20} />
-            Ajouter un sous-réseau
+            <Plus size={18} /> Sous Réseau
           </button>
         </div>
 
-        {/* Modal */}
-        {showModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white/95 backdrop-blur-xl rounded-2xl p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto hide-scrollbar border border-white/20 shadow-2xl">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                    {editingId ? '✏️ Modifier le sous-réseau' : '➕ Ajouter un sous-réseau'}
-                  </h2>
-                  <p className="text-sm text-slate-500 mt-1">Le calcul est automatique et respecte les règles de sous-réseautage</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 xl:col-span-1"><p className="text-xs text-slate-500">Sous-réseaux</p><p className="text-2xl font-bold text-slate-900">{totals.totalSubnets}</p></div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 xl:col-span-1"><p className="text-xs text-slate-500">IP totales</p><p className="text-2xl font-bold text-slate-900">{totals.totalIps}</p></div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 xl:col-span-1"><p className="text-xs text-slate-500">IP utilisées</p><p className="text-2xl font-bold text-blue-600">{totals.totalUsed}</p></div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 xl:col-span-1"><p className="text-xs text-slate-500">IP libres</p><p className="text-2xl font-bold text-emerald-600">{totals.totalFree}</p></div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 xl:col-span-1"><p className="text-xs text-slate-500">Occupation moyenne</p><p className="text-2xl font-bold text-amber-600">{Math.round(totals.avgOccupancy)}%</p></div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 xl:col-span-1"><p className="text-xs text-slate-500">Conflits</p><p className="text-2xl font-bold text-rose-600">{totals.conflicts}</p></div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <section className="xl:col-span-2 rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="flex items-center gap-2 mb-4"><Network size={18} className="text-blue-600" /><h2 className="text-lg font-bold">Visualisation des subnets existants</h2></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {subnetMetrics.length === 0 ? (
+                <div className="md:col-span-2 rounded-xl border border-dashed border-slate-300 p-6 text-center text-slate-500">Aucun subnet configuré.</div>
+              ) : subnetMetrics.map((item) => (
+                <div key={item.subnet.id} className="rounded-xl border border-slate-200 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-slate-900">{item.subnet.name}</p>
+                      <p className="text-xs text-slate-500">{item.subnet.subnetCidr} • {item.subnet.allocation}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          const main = parseCidr(item.subnet.mainNetworkCidr);
+                          const mainNetwork = main ? (main.ipInt & maskFromPrefix(main.prefix)) : null;
+                          const subnetSize = 2 ** (32 - item.subnet.prefix);
+                          const networkInt = ipToInt(item.subnet.networkAddress);
+                          const index = mainNetwork !== null && networkInt !== null ? Math.floor((networkInt - mainNetwork) / subnetSize) + 1 : 1;
+                          setEditingId(item.subnet.id);
+                          setFormData({
+                            name: item.subnet.name,
+                            mainNetworkCidr: item.subnet.mainNetworkCidr,
+                            calculationMode: 'hosts',
+                            hostCount: item.subnet.usableHosts,
+                            subnetCount: 1,
+                            subnetIndexMode: 'index',
+                            subnetIndex: index,
+                            allocation: item.subnet.allocation,
+                          });
+                          setShowModal(true);
+                        }}
+                        className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button onClick={() => deleteSubnet(item.subnet.id)} className="p-2 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100"><Trash2 size={14} /></button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <p>Masque: <span className="font-mono text-slate-700">{item.subnet.netmask}</span></p>
+                    <p>Hôtes: <span className="font-semibold text-slate-700">{item.subnet.usableHosts}</span></p>
+                    <p className="col-span-2">Plage IP: <span className="font-mono text-slate-700">{item.subnet.rangeStart} → {item.subnet.rangeEnd}</span></p>
+                    <p>IP totales: <span className="font-semibold text-slate-700">{item.totalIps}</span></p>
+                    <p>IP utilisées: <span className="font-semibold text-blue-700">{item.used}</span></p>
+                    <p>IP libres: <span className="font-semibold text-emerald-700">{item.free}</span></p>
+                    <p>Taux d’occupation: <span className="font-semibold text-amber-700">{Math.round(item.occupancy)}%</span></p>
+                  </div>
+
+                  <div>
+                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-500" style={{ width: `${item.occupancy}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="text-xs">
+                    {item.conflicts.length > 0 ? (
+                      <p className="text-rose-600 font-semibold">Conflits: {item.conflicts.join(', ')}</p>
+                    ) : (
+                      <p className="text-emerald-600 font-semibold">Conflits: Aucun</p>
+                    )}
+                  </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setShowModal(false);
-                    setEditingId(null);
-                    setFormError(null);
-                    setFormData({
-                      name: '',
-                      mainNetworkCidr: '',
-                      calculationMode: 'hosts',
-                      hostCount: 50,
-                      subnetCount: 4,
-                      subnetIndexMode: 'auto',
-                      subnetIndex: 1,
-                      allocation: '',
-                    });
-                  }}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                  aria-label="Fermer le formulaire"
-                >
-                  <X size={18} />
-                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+            <div className="flex items-center gap-2"><Wifi size={18} className="text-emerald-600" /><h2 className="text-lg font-bold">Test ICMP temps réel</h2></div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-600">IP ou hostname</label>
+              <input value={pingTarget} onChange={(e) => setPingTarget(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="192.168.1.10 ou srv-ad" />
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => void runPingTest()} disabled={pingLoading} className="flex-1 rounded-lg bg-blue-600 text-white py-2 text-sm font-semibold hover:bg-blue-700 disabled:opacity-60">{pingLoading ? 'Test…' : 'Lancer test'}</button>
+              <button onClick={() => setPingLive((v) => !v)} className={`rounded-lg px-3 py-2 text-xs font-semibold border ${pingLive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
+                <RefreshCw size={14} className={`inline mr-1 ${pingLive ? 'animate-spin' : ''}`} /> Live
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-1">
+              <p>Statut: <span className={`font-semibold ${pingResult?.reachable ? 'text-emerald-700' : 'text-rose-700'}`}>{pingResult ? (pingResult.reachable ? 'Accessible' : 'Inaccessible') : '—'}</span></p>
+              <p>Temps de réponse: <span className="font-semibold text-slate-800">{pingResult?.elapsedMs != null ? `${pingResult.elapsedMs} ms` : '—'}</span></p>
+              <p>Paquets envoyés/reçus: <span className="font-semibold text-slate-800">{pingResult?.sent ?? '—'} / {pingResult?.received ?? '—'}</span></p>
+              <p>Latence moyenne: <span className="font-semibold text-slate-800">{pingResult?.avgLatencyMs != null ? `${pingResult.avgLatencyMs} ms` : '—'}</span></p>
+              {pingResult?.error && <p className="text-rose-600 font-semibold">{pingResult.error}</p>}
+            </div>
+          </section>
+        </div>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+          <div className="flex items-center gap-2"><Calculator size={18} className="text-indigo-600" /><h2 className="text-lg font-bold">Espace de calcul temps réel</h2></div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            <select value={calcMode} onChange={(e) => setCalcMode(e.target.value as any)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+              <option value="cidr">Par CIDR</option>
+              <option value="mask">Par masque décimal</option>
+              <option value="hosts">Par nombre d’hôtes</option>
+              <option value="subnets">Par nombre de sous-réseaux</option>
+            </select>
+
+            {calcMode === 'cidr' && (
+              <input value={calcCidr} onChange={(e) => setCalcCidr(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-3" placeholder="192.168.10.0/24" />
+            )}
+
+            {calcMode === 'mask' && (
+              <>
+                <input value={calcIp} onChange={(e) => setCalcIp(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Adresse IP" />
+                <input value={calcMask} onChange={(e) => setCalcMask(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="255.255.255.0" />
+              </>
+            )}
+
+            {(calcMode === 'hosts' || calcMode === 'subnets') && (
+              <input value={calcMainCidr} onChange={(e) => setCalcMainCidr(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Réseau principal CIDR" />
+            )}
+
+            {calcMode === 'hosts' && (
+              <input type="number" min={1} value={calcHosts} onChange={(e) => setCalcHosts(Number(e.target.value))} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Nombre d’hôtes" />
+            )}
+
+            {calcMode === 'subnets' && (
+              <input type="number" min={1} value={calcSubnets} onChange={(e) => setCalcSubnets(Number(e.target.value))} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Nombre de sous-réseaux" />
+            )}
+          </div>
+
+          {!calculatorResult.valid ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2 text-sm">{calculatorResult.error || 'Entrées invalides.'}</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
+              {([
+                { label: 'Adresse réseau', value: calculatorResult.networkAddress },
+                { label: 'Adresse broadcast', value: calculatorResult.broadcastAddress },
+                { label: 'Première IP', value: calculatorResult.firstIp },
+                { label: 'Dernière IP', value: calculatorResult.lastIp },
+                { label: 'Masque', value: calculatorResult.netmask },
+                { label: 'Wildcard', value: calculatorResult.wildcard },
+                { label: 'CIDR', value: calculatorResult.subnetCidr },
+                { label: 'Hôtes utilisables', value: calculatorResult.usableHosts != null ? String(calculatorResult.usableHosts) : undefined },
+              ] as Array<{ label: string; value: string | undefined }>).map(({ label, value }) => (
+                <div key={label} className="rounded-xl border border-slate-200 p-3 bg-slate-50">
+                  <p className="text-xs text-slate-500">{label}</p>
+                  <p className="font-mono text-slate-900 mt-1 break-all">{value || '—'}</p>
+                  {value && (
+                    <button onClick={() => void copyValue(label, value)} className="mt-2 text-xs inline-flex items-center gap-1 text-blue-600 hover:text-blue-700">
+                      <Copy size={12} /> {copiedField === label ? 'Copié' : 'Copier'}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-1">
+            <p className="font-semibold text-slate-700">Conversion binaire / décimal</p>
+            {binaryView ? (
+              <>
+                <p>Réseau binaire: <span className="font-mono text-slate-800">{binaryView.network}</span></p>
+                <p>Masque binaire: <span className="font-mono text-slate-800">{binaryView.mask}</span></p>
+              </>
+            ) : (
+              <p className="text-slate-500">Résultat requis pour afficher la conversion.</p>
+            )}
+          </div>
+        </section>
+
+        {showModal && (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-slate-900">{editingId ? 'Modifier un sous-réseau' : 'Ajouter un sous-réseau'}</h3>
+                <button onClick={() => { setShowModal(false); resetForm(); }} className="p-2 rounded-lg hover:bg-slate-100"><Trash2 size={16} /></button>
               </div>
 
-              {formError && (
-                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {formError}
-                </div>
-              )}
+              {formError && <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</div>}
 
-              <form onSubmit={handleSubmit} className="space-y-6 text-sm">
-                <div className="bg-white/70 border border-white/30 rounded-2xl p-5 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full bg-blue-500" />
-                    <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-600">Informations générales</h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="group">
-                      <label className="block text-xs font-semibold text-slate-900 mb-2">Nom du sous-réseau</label>
-                      <input
-                        type="text"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
-                        placeholder="Ex: Bureau Paris"
-                      />
-                    </div>
-
-                    <div className="group">
-                      <label className="block text-xs font-semibold text-slate-900 mb-2">Réseau principal (CIDR) *</label>
-                      <input
-                        type="text"
-                        value={formData.mainNetworkCidr}
-                        onChange={(e) => setFormData({ ...formData, mainNetworkCidr: e.target.value })}
-                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
-                        placeholder="192.168.0.0/16"
-                        required
-                      />
-                    </div>
-                  </div>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Nom du subnet" />
+                  <input value={formData.mainNetworkCidr} onChange={(e) => setFormData({ ...formData, mainNetworkCidr: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Réseau principal CIDR" required />
                 </div>
 
-                <div className="bg-white/70 border border-white/30 rounded-2xl p-5 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full bg-emerald-500" />
-                    <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-600">Paramètres de calcul</h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="group">
-                      <label className="block text-xs font-semibold text-slate-900 mb-2">Méthode de calcul</label>
-                      <div className="flex items-center gap-4">
-                        <label className="flex items-center gap-2 text-xs text-slate-700">
-                          <input
-                            type="radio"
-                            checked={formData.calculationMode === 'hosts'}
-                            onChange={() => setFormData({ ...formData, calculationMode: 'hosts' })}
-                          />
-                          Par nombre d’hôtes
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-slate-700">
-                          <input
-                            type="radio"
-                            checked={formData.calculationMode === 'subnets'}
-                            onChange={() => setFormData({ ...formData, calculationMode: 'subnets' })}
-                          />
-                          Par nombre de sous-réseaux
-                        </label>
-                      </div>
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <select value={formData.calculationMode} onChange={(e) => setFormData({ ...formData, calculationMode: e.target.value as 'hosts' | 'subnets' })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    <option value="hosts">Par hôtes</option>
+                    <option value="subnets">Par sous-réseaux</option>
+                  </select>
 
-                    {formData.calculationMode === 'hosts' ? (
-                      <div className="group">
-                        <label className="block text-xs font-semibold text-slate-900 mb-2">Nombre d’hôtes requis *</label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={formData.hostCount}
-                          onChange={(e) => setFormData({ ...formData, hostCount: Number(e.target.value) })}
-                          className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
-                          placeholder="50"
-                          required
-                        />
-                      </div>
-                    ) : (
-                      <div className="group">
-                        <label className="block text-xs font-semibold text-slate-900 mb-2">Nombre de sous-réseaux souhaité *</label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={formData.subnetCount}
-                          onChange={(e) => setFormData({ ...formData, subnetCount: Number(e.target.value) })}
-                          className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
-                          placeholder="4"
-                          required
-                        />
-                      </div>
-                    )}
+                  {formData.calculationMode === 'hosts' ? (
+                    <input type="number" min={1} value={formData.hostCount} onChange={(e) => setFormData({ ...formData, hostCount: Number(e.target.value) })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Nombre d’hôtes" required />
+                  ) : (
+                    <input type="number" min={1} value={formData.subnetCount} onChange={(e) => setFormData({ ...formData, subnetCount: Number(e.target.value) })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Nombre de sous-réseaux" required />
+                  )}
 
-                    <div className="group">
-                      <label className="block text-xs font-semibold text-slate-900 mb-2">Choix du sous-réseau</label>
-                      <div className="flex items-center gap-4">
-                        <label className="flex items-center gap-2 text-xs text-slate-700">
-                          <input
-                            type="radio"
-                            checked={formData.subnetIndexMode === 'auto'}
-                            onChange={() => setFormData({ ...formData, subnetIndexMode: 'auto' })}
-                          />
-                          Auto (prochain disponible)
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-slate-700">
-                          <input
-                            type="radio"
-                            checked={formData.subnetIndexMode === 'index'}
-                            onChange={() => setFormData({ ...formData, subnetIndexMode: 'index' })}
-                          />
-                          Index précis
-                        </label>
-                      </div>
-                    </div>
-
-                    {formData.subnetIndexMode === 'index' && (
-                      <div className="group">
-                        <label className="block text-xs font-semibold text-slate-900 mb-2">Index du sous-réseau *</label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={formData.subnetIndex}
-                          onChange={(e) => setFormData({ ...formData, subnetIndex: Number(e.target.value) })}
-                          className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
-                          placeholder="1"
-                          required
-                        />
-                        {calculation.totalSubnets && (
-                          <p className="mt-2 text-xs text-slate-500">Disponible: 1 → {calculation.totalSubnets}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  <input value={formData.allocation} onChange={(e) => setFormData({ ...formData, allocation: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Service / Département" required />
                 </div>
 
-                <div className="bg-white/70 border border-white/30 rounded-2xl p-5 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full bg-purple-500" />
-                    <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-600">Attribution</h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="group">
-                      <label className="block text-xs font-semibold text-slate-900 mb-2">Département / Service *</label>
-                      <input
-                        type="text"
-                        value={formData.allocation}
-                        onChange={(e) => setFormData({ ...formData, allocation: e.target.value })}
-                        className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
-                        placeholder="Ex : IT, Marketing"
-                        required
-                      />
-                    </div>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <select value={formData.subnetIndexMode} onChange={(e) => setFormData({ ...formData, subnetIndexMode: e.target.value as 'auto' | 'index' })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    <option value="auto">Index auto</option>
+                    <option value="index">Index précis</option>
+                  </select>
+                  {formData.subnetIndexMode === 'index' && (
+                    <input type="number" min={1} value={formData.subnetIndex} onChange={(e) => setFormData({ ...formData, subnetIndex: Number(e.target.value) })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Index" required />
+                  )}
                 </div>
 
-                <div className="bg-blue-50/70 border border-blue-100 rounded-2xl p-5 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full bg-blue-500" />
-                    <h3 className="text-xs uppercase tracking-wide font-semibold text-blue-800">Calcul automatique</h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
-                    <div>
-                      <span className="font-medium">Masque :</span> {calculation.netmask || '—'}
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                  {formPlan.valid ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-slate-700">
+                      <p>CIDR: <span className="font-mono">{formPlan.subnetCidr}</span></p>
+                      <p>Masque: <span className="font-mono">{formPlan.netmask}</span></p>
+                      <p>Adresse réseau: <span className="font-mono">{formPlan.networkAddress}</span></p>
+                      <p>Broadcast: <span className="font-mono">{formPlan.broadcastAddress}</span></p>
+                      <p>Première IP: <span className="font-mono">{formPlan.firstIp}</span></p>
+                      <p>Dernière IP: <span className="font-mono">{formPlan.lastIp}</span></p>
+                      <p>Hôtes utilisables: <span className="font-semibold">{formPlan.usableHosts}</span></p>
+                      <p>Sous-réseau index: <span className="font-semibold">{formPlan.subnetIndex}</span></p>
                     </div>
-                    <div>
-                      <span className="font-medium">CIDR :</span> {calculation.subnetCidr || '—'}
-                    </div>
-                    <div>
-                      <span className="font-medium">Préfixe :</span> {calculation.prefix ?? '—'}
-                    </div>
-                    <div>
-                      <span className="font-medium">Index :</span> {calculation.subnetIndex ?? '—'}
-                    </div>
-                    <div>
-                      <span className="font-medium">Plage utilisable :</span> {calculation.rangeStart && calculation.rangeEnd ? `${calculation.rangeStart} → ${calculation.rangeEnd}` : '—'}
-                    </div>
-                    <div>
-                      <span className="font-medium">IP utilisables :</span> {calculation.usableHosts ?? '—'}
-                    </div>
-                    <div>
-                      <span className="font-medium">Sous-réseaux possibles :</span> {calculation.totalSubnets ?? '—'}
-                    </div>
-                    {formData.calculationMode === 'subnets' && (
-                      <div>
-                        <span className="font-medium">Sous-réseaux fournis :</span> {calculation.actualSubnets ?? '—'}
-                      </div>
-                    )}
-                  </div>
+                  ) : (
+                    <p className="text-rose-600">{formPlan.error || 'Données insuffisantes'}</p>
+                  )}
                 </div>
 
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
-                  >
-                    {editingId ? 'Mettre à jour' : 'Ajouter'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowModal(false);
-                      setEditingId(null);
-                      setFormError(null);
-                      setFormData({
-                        name: '',
-                        mainNetworkCidr: '',
-                        calculationMode: 'hosts',
-                        hostCount: 50,
-                        subnetCount: 4,
-                        subnetIndexMode: 'auto',
-                        subnetIndex: 1,
-                        allocation: '',
-                      });
-                    }}
-                    className="flex-1 px-4 py-2 bg-slate-200 text-slate-700 rounded-xl hover:bg-slate-300 transition-all"
-                  >
-                    Annuler
-                  </button>
+                <div className="flex gap-2">
+                  <button type="submit" className="flex-1 rounded-lg bg-blue-600 text-white py-2 text-sm font-semibold hover:bg-blue-700">{editingId ? 'Mettre à jour' : 'Créer le sous-réseau'}</button>
+                  <button type="button" onClick={() => { setShowModal(false); resetForm(); }} className="flex-1 rounded-lg bg-slate-100 text-slate-700 py-2 text-sm font-semibold hover:bg-slate-200">Annuler</button>
                 </div>
               </form>
             </div>
           </div>
         )}
-
-        {/* Subnets Table */}
-        <div className="bg-white/80 backdrop-blur border border-white/40 rounded-2xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50/80 border-b border-white/60">
-                <tr>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Nom</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Réseau principal</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Sous-réseau</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Masque</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Plage utilisable</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">IP utilisables</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Utilisation</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Attribution</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {subnets.map((subnet) => {
-                  const used = usedCountBySubnet(subnet);
-                  const available = Math.max(subnet.usableHosts - used, 0);
-                  const usagePercent = subnet.usableHosts > 0 ? Math.min((used / subnet.usableHosts) * 100, 100) : 0;
-
-                  return (
-                    <tr key={subnet.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{subnet.name}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600 font-mono">{subnet.mainNetworkCidr}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600 font-mono">{subnet.subnetCidr}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600 font-mono">{subnet.netmask}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600 font-mono">{subnet.rangeStart} → {subnet.rangeEnd}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{subnet.usableHosts}</td>
-                      <td className="px-6 py-4">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-xs text-gray-500">
-                            <span>{used} utilisées</span>
-                            <span>{available} dispo</span>
-                          </div>
-                          <div className="h-2 w-28 rounded-full bg-gray-200 overflow-hidden">
-                            <div
-                              className="h-full bg-blue-600 transition-all"
-                              style={{ width: `${usagePercent}%` }}
-                            />
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        <div className="font-medium text-gray-800">{subnet.allocation}</div>
-                      </td>
-                      <td className="px-6 py-4 flex gap-2 justify-center items-center">
-                        <button
-                          onClick={() => {
-                            setEditingId(subnet.id);
-                            setFormError(null);
-                            const main = parseCidr(subnet.mainNetworkCidr);
-                            const mainNetwork = main ? (main.ipInt & maskFromPrefix(main.prefix)) : null;
-                            const subnetSize = 2 ** (32 - subnet.prefix);
-                            const networkInt = ipToInt(subnet.networkAddress);
-                            const derivedIndex =
-                              mainNetwork !== null && networkInt !== null
-                                ? Math.floor((networkInt - mainNetwork) / subnetSize) + 1
-                                : 1;
-                            const totalSubnets = main ? 2 ** (subnet.prefix - main.prefix) : 1;
-                            setFormData({
-                              name: subnet.name,
-                              mainNetworkCidr: subnet.mainNetworkCidr,
-                              calculationMode: 'hosts',
-                              hostCount: subnet.usableHosts,
-                              subnetCount: totalSubnets,
-                              subnetIndexMode: 'index',
-                              subnetIndex: derivedIndex,
-                              allocation: subnet.allocation,
-                            });
-                            setShowModal(true);
-                          }}
-                          className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                          title="Modifier"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          onClick={() => deleteSubnet(subnet.id)}
-                          className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-                          title="Supprimer"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {subnets.length === 0 && (
-            <div className="text-center py-8">
-              <p className="text-gray-500">Aucun sous-réseau trouvé</p>
-            </div>
-          )}
-        </div>
-
-        {/* Subnet Statistics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <p className="text-sm text-gray-600 mb-2">Sous-réseaux</p>
-            <p className="text-3xl font-bold text-gray-900">{subnets.length}</p>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <p className="text-sm text-gray-600 mb-2">IP utilisables</p>
-            <p className="text-3xl font-bold text-blue-600">{totalUsable}</p>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <p className="text-sm text-gray-600 mb-2">IP utilisées</p>
-            <p className="text-3xl font-bold text-green-600">{totalUsed}</p>
-          </div>
-        </div>
       </div>
     </MainLayout>
   );
