@@ -257,6 +257,8 @@ export default function IPAddressesPage() {
   const [calcMainCidr, setCalcMainCidr] = useState('192.168.0.0/16');
   const [calcHosts, setCalcHosts] = useState(120);
   const [calcSubnets, setCalcSubnets] = useState(8);
+  const [calcSubnetIndexMode, setCalcSubnetIndexMode] = useState<'auto' | 'index'>('auto');
+  const [calcSubnetIndex, setCalcSubnetIndex] = useState(1);
 
   const [formData, setFormData] = useState<SubnetForm>({
     name: '',
@@ -351,11 +353,11 @@ export default function IPAddressesPage() {
     }
 
     if (calcMode === 'hosts') {
-      return computeSubnetPlan(calcMainCidr, 'hosts', calcHosts, 0, 'index', 1, []);
+      return computeSubnetPlan(calcMainCidr, 'hosts', calcHosts, 0, calcSubnetIndexMode, calcSubnetIndex, []);
     }
 
-    return computeSubnetPlan(calcMainCidr, 'subnets', 0, calcSubnets, 'index', 1, []);
-  }, [calcMode, calcCidr, calcIp, calcMask, calcMainCidr, calcHosts, calcSubnets]);
+    return computeSubnetPlan(calcMainCidr, 'subnets', 0, calcSubnets, calcSubnetIndexMode, calcSubnetIndex, []);
+  }, [calcMode, calcCidr, calcIp, calcMask, calcMainCidr, calcHosts, calcSubnets, calcSubnetIndexMode, calcSubnetIndex]);
 
   const binaryView = useMemo(() => {
     if (!calculatorResult.valid || !calculatorResult.networkAddress || !calculatorResult.netmask) {
@@ -661,6 +663,44 @@ export default function IPAddressesPage() {
                     </div>
                   )}
                 </div>
+
+                <div>
+                  <p className="text-sm font-semibold text-slate-800 mb-2">Choix du sous-réseau</p>
+                  <div className="flex flex-wrap items-center gap-5 text-sm text-slate-700">
+                    <label className="inline-flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="calcSubnetChoice"
+                        checked={calcSubnetIndexMode === 'auto'}
+                        onChange={() => setCalcSubnetIndexMode('auto')}
+                      />
+                      Auto (prochain disponible)
+                    </label>
+                    <label className="inline-flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="calcSubnetChoice"
+                        checked={calcSubnetIndexMode === 'index'}
+                        onChange={() => setCalcSubnetIndexMode('index')}
+                      />
+                      Index précis
+                    </label>
+                  </div>
+                </div>
+
+                {calcSubnetIndexMode === 'index' && (
+                  <div className="max-w-xs">
+                    <label className="block text-sm font-semibold text-slate-800 mb-2">Index du sous-réseau *</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={calcSubnetIndex}
+                      onChange={(e) => setCalcSubnetIndex(Number(e.target.value))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                      placeholder="1"
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
