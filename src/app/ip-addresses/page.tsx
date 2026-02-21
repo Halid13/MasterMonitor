@@ -49,6 +49,16 @@ type PingResponse = {
   details?: string;
 };
 
+type PingHistoryItem = {
+  id: string;
+  target: string;
+  reachable: boolean;
+  avgLatencyMs: number | null;
+  sent: number;
+  received: number;
+  testedAt: string;
+};
+
 const ipToInt = (ip: unknown) => {
   if (typeof ip !== 'string') return null;
   const normalized = ip.trim();
@@ -249,6 +259,7 @@ export default function IPAddressesPage() {
   const [pingLoading, setPingLoading] = useState(false);
   const [pingLive, setPingLive] = useState(false);
   const [pingResult, setPingResult] = useState<PingResponse | null>(null);
+  const [pingHistory, setPingHistory] = useState<PingHistoryItem[]>([]);
 
   const [calcMode, setCalcMode] = useState<'cidr' | 'mask' | 'hosts' | 'subnets'>('cidr');
   const [calcCidr, setCalcCidr] = useState('192.168.10.0/24');
@@ -387,6 +398,19 @@ export default function IPAddressesPage() {
       const res = await fetch(`/api/system/ping?target=${target}&count=4`, { cache: 'no-store' });
       const data = await res.json();
       setPingResult(data);
+
+      if (data?.target) {
+        const historyItem: PingHistoryItem = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          target: data.target,
+          reachable: Boolean(data.reachable),
+          avgLatencyMs: data.avgLatencyMs == null ? null : Number(data.avgLatencyMs),
+          sent: Number(data.sent ?? 0),
+          received: Number(data.received ?? 0),
+          testedAt: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        };
+        setPingHistory((prev) => [historyItem, ...prev].slice(0, 3));
+      }
     } catch {
       setPingResult({ ok: false, target: pingTarget.trim(), error: 'Erreur réseau pendant le test ICMP.' });
     } finally {
@@ -588,6 +612,32 @@ export default function IPAddressesPage() {
               <p>Paquets envoyés/reçus: <span className="font-semibold text-slate-800">{pingResult?.sent ?? '—'} / {pingResult?.received ?? '—'}</span></p>
               <p>Latence moyenne: <span className="font-semibold text-slate-800">{pingResult?.avgLatencyMs != null ? `${pingResult.avgLatencyMs} ms` : '—'}</span></p>
               {pingResult?.error && <p className="text-rose-600 font-semibold">{pingResult.error}</p>}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs">
+              <p className="font-semibold text-slate-700 mb-2">Historique (3 derniers tests)</p>
+              {pingHistory.length === 0 ? (
+                <p className="text-slate-500">Aucun test pour le moment.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {pingHistory.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-slate-700 truncate">{item.target}</p>
+                        <p className="text-[11px] text-slate-500">{item.testedAt}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-semibold ${item.reachable ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {item.reachable ? 'En ligne' : 'Hors ligne'}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          {item.received}/{item.sent} • {item.avgLatencyMs != null ? `${item.avgLatencyMs} ms` : '—'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
         </div>
