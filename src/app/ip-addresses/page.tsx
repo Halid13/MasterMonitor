@@ -584,35 +584,84 @@ export default function IPAddressesPage() {
         <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
           <div className="flex items-center gap-2"><Calculator size={18} className="text-indigo-600" /><h2 className="text-lg font-bold">Espace de calcul temps réel</h2></div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-            <select value={calcMode} onChange={(e) => setCalcMode(e.target.value as any)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-              <option value="cidr">Par CIDR</option>
-              <option value="mask">Par masque décimal</option>
-              <option value="hosts">Par nombre d’hôtes</option>
-              <option value="subnets">Par nombre de sous-réseaux</option>
-            </select>
+          <div className="space-y-3">
+            <div className="rounded-2xl bg-slate-100/70 border border-slate-200 p-4 space-y-4">
+              <div className="flex items-center gap-2 text-slate-700">
+                <span className="h-2 w-2 rounded-full bg-blue-500" />
+                <p className="text-xs font-bold tracking-wide uppercase">Informations générales</p>
+              </div>
 
-            {calcMode === 'cidr' && (
-              <input value={calcCidr} onChange={(e) => setCalcCidr(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-3" placeholder="192.168.10.0/24" />
-            )}
+              <div>
+                <p className="text-sm font-semibold text-slate-800 mb-2">Méthode de calcul</p>
+                <div className="flex flex-wrap items-center gap-5 text-sm text-slate-700">
+                  <label className="inline-flex items-center gap-2">
+                    <input type="radio" name="calcMode" checked={calcMode === 'cidr'} onChange={() => setCalcMode('cidr')} />
+                    Par CIDR
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input type="radio" name="calcMode" checked={calcMode === 'mask'} onChange={() => setCalcMode('mask')} />
+                    Par masque décimal
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input type="radio" name="calcMode" checked={calcMode === 'hosts'} onChange={() => setCalcMode('hosts')} />
+                    Par nombre d’hôtes
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input type="radio" name="calcMode" checked={calcMode === 'subnets'} onChange={() => setCalcMode('subnets')} />
+                    Par nombre de sous-réseaux
+                  </label>
+                </div>
+              </div>
 
-            {calcMode === 'mask' && (
-              <>
-                <input value={calcIp} onChange={(e) => setCalcIp(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Adresse IP" />
-                <input value={calcMask} onChange={(e) => setCalcMask(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="255.255.255.0" />
-              </>
-            )}
+              {calcMode === 'cidr' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-800 mb-2">Réseau (CIDR) *</label>
+                    <input value={calcCidr} onChange={(e) => setCalcCidr(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="192.168.10.0/24" />
+                  </div>
+                </div>
+              )}
+
+              {calcMode === 'mask' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-800 mb-2">Adresse IP *</label>
+                    <input value={calcIp} onChange={(e) => setCalcIp(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="192.168.10.10" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-800 mb-2">Masque décimal *</label>
+                    <input value={calcMask} onChange={(e) => setCalcMask(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="255.255.255.0" />
+                  </div>
+                </div>
+              )}
+            </div>
 
             {(calcMode === 'hosts' || calcMode === 'subnets') && (
-              <input value={calcMainCidr} onChange={(e) => setCalcMainCidr(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Réseau principal CIDR" />
-            )}
+              <div className="rounded-2xl bg-slate-100/70 border border-slate-200 p-4 space-y-4">
+                <div className="flex items-center gap-2 text-slate-700">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  <p className="text-xs font-bold tracking-wide uppercase">Paramètres de calcul</p>
+                </div>
 
-            {calcMode === 'hosts' && (
-              <input type="number" min={1} value={calcHosts} onChange={(e) => setCalcHosts(Number(e.target.value))} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Nombre d’hôtes" />
-            )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-800 mb-2">Réseau principal (CIDR) *</label>
+                    <input value={calcMainCidr} onChange={(e) => setCalcMainCidr(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="192.168.0.0/16" />
+                  </div>
 
-            {calcMode === 'subnets' && (
-              <input type="number" min={1} value={calcSubnets} onChange={(e) => setCalcSubnets(Number(e.target.value))} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Nombre de sous-réseaux" />
+                  {calcMode === 'hosts' ? (
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-800 mb-2">Nombre d’hôtes requis *</label>
+                      <input type="number" min={1} value={calcHosts} onChange={(e) => setCalcHosts(Number(e.target.value))} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="50" />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-800 mb-2">Nombre de sous-réseaux *</label>
+                      <input type="number" min={1} value={calcSubnets} onChange={(e) => setCalcSubnets(Number(e.target.value))} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm" placeholder="4" />
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 
