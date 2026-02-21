@@ -2,6 +2,69 @@ import { NextResponse, NextRequest } from 'next/server';
 import { SystemLog, LogCategory, LogLevel } from '@/types';
 import { logger } from '@/services/logger';
 
+const IPv4_REGEX = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
+
+const normalizeIp = (value?: string | null) => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const noMappedPrefix = trimmed.startsWith('::ffff:') ? trimmed.slice(7) : trimmed;
+  if (noMappedPrefix === '::1' || noMappedPrefix === '127.0.0.1' || noMappedPrefix === 'localhost') {
+    return undefined;
+  }
+  return noMappedPrefix;
+};
+
+const getClientIpFromHeaders = (request: NextRequest) => {
+  const xForwardedFor = request.headers.get('x-forwarded-for');
+  if (xForwardedFor) {
+    const first = xForwardedFor.split(',')[0]?.trim();
+    const normalized = normalizeIp(first);
+    if (normalized) return normalized;
+  }
+
+  const xRealIp = normalizeIp(request.headers.get('x-real-ip'));
+  if (xRealIp) return xRealIp;
+
+  const cfConnectingIp = normalizeIp(request.headers.get('cf-connecting-ip'));
+  if (cfConnectingIp) return cfConnectingIp;
+
+  const trueClientIp = normalizeIp(request.headers.get('true-client-ip'));
+  if (trueClientIp) return trueClientIp;
+
+  return undefined;
+};
+
+const extractIpFromPayload = (objectImpacted?: string, details?: Record<string, any>) => {
+  const directKeys = [
+    details?.ip,
+    details?.ipAddress,
+    details?.sourceIp,
+    details?.targetIp,
+    details?.deviceIp,
+  ];
+
+  for (const candidate of directKeys) {
+    const normalized = normalizeIp(typeof candidate === 'string' ? candidate : undefined);
+    if (normalized) return normalized;
+  }
+
+  if (typeof objectImpacted === 'string') {
+    const objectMatch = objectImpacted.match(IPv4_REGEX)?.[0];
+    const normalized = normalizeIp(objectMatch);
+    if (normalized) return normalized;
+  }
+
+  if (details) {
+    const text = JSON.stringify(details);
+    const detailMatch = text.match(IPv4_REGEX)?.[0];
+    const normalized = normalizeIp(detailMatch);
+    if (normalized) return normalized;
+  }
+
+  return undefined;
+};
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const category = searchParams.get('category') || undefined;
@@ -50,6 +113,11 @@ export async function POST(request: NextRequest) {
       details,
     } = body;
 
+    const requestIp = getClientIpFromHeaders(request);
+    const payloadIp = extractIpFromPayload(objectImpacted, details);
+    const explicitIp = normalizeIp(ipSource);
+    const resolvedIp = explicitIp || payloadIp || requestIp;
+
     if (!category || !level || !module || !action || !objectImpacted) {
       return NextResponse.json(
         { ok: false, error: 'Missing required fields' },
@@ -65,7 +133,7 @@ export async function POST(request: NextRequest) {
         log = logger.logSystem(action, objectImpacted, level, details, oldValue, newValue);
         break;
       case 'user':
-        log = logger.logUser(action, objectImpacted, username || 'system', level, ipSource, details);
+        log = logger.logUser(action, objectImpacted, username || 'system', level, resolvedIp, details);
         break;
       case 'action':
         log = logger.logAction(
@@ -80,13 +148,17 @@ export async function POST(request: NextRequest) {
         );
         break;
       case 'security':
-        log = logger.logSecurity(action, objectImpacted, level, username, ipSource, details);
+        log = logger.logSecurity(action, objectImpacted, level, username, resolvedIp, details);
         break;
       default:
         return NextResponse.json(
           { ok: false, error: 'Invalid log category' },
           { status: 400 }
         );
+    }
+
+    if (resolvedIp) {
+      log.ipSource = resolvedIp;
     }
 
     return NextResponse.json({ ok: true, log });

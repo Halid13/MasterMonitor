@@ -20,6 +20,7 @@ export default function LogsPage() {
   const [purgeLoading, setPurgeLoading] = useState(false);
   const [purgeMessage, setPurgeMessage] = useState('');
   const [selectedLog, setSelectedLog] = useState<SystemLog | null>(null);
+  const [lastUpdatedTime, setLastUpdatedTime] = useState('--:--:--');
 
   const itemsPerPage = 50;
   const logsRef = useRef<SystemLog[]>([]);
@@ -43,6 +44,7 @@ export default function LogsPage() {
         if (data.ok) {
           setLogs(data.logs);
           setTotalPages(data.pages);
+          setLastUpdatedTime(new Date().toLocaleTimeString('fr-FR'));
         }
       } catch (error) {
         console.error('Failed to fetch logs:', error);
@@ -98,6 +100,7 @@ export default function LogsPage() {
         if (current.some((l) => l.id === log.id)) return;
         const next = [log, ...current].slice(0, itemsPerPage);
         setLogs(next);
+        setLastUpdatedTime(new Date().toLocaleTimeString('fr-FR'));
       } catch (error) {
         console.error('Failed to parse log stream event:', error);
       }
@@ -452,7 +455,7 @@ export default function LogsPage() {
               Santé du système: <span className="font-bold text-green-600">✅ Bon</span>
             </p>
             <p className="text-xs text-slate-600 mt-1">
-              Dernière mise à jour: <span className="font-mono">{new Date().toLocaleTimeString()}</span>
+              Dernière mise à jour: <span className="font-mono">{lastUpdatedTime}</span>
             </p>
           </div>
         </div>
