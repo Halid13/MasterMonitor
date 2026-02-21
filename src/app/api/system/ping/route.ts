@@ -14,6 +14,58 @@ const runCommand = (command: string) =>
     });
   });
 
+const runWindowsPing = async (target: string, count: number) => {
+  const escapedTarget = target.replace(/'/g, "''");
+  const psCommand = [
+    "$ErrorActionPreference = 'Stop'",
+    `$sent = ${count}`,
+    `$results = Test-Connection -ComputerName '${escapedTarget}' -Count ${count} -ErrorAction SilentlyContinue`,
+    '$received = @($results).Count',
+    "$avg = if ($received -gt 0) { [Math]::Round((($results | Measure-Object -Property ResponseTime -Average).Average), 2) } else { $null }",
+    '[PSCustomObject]@{ sent = $sent; received = $received; avgLatency = $avg; reachable = ($received -gt 0) } | ConvertTo-Json -Compress',
+  ].join('; ');
+
+  const command = `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "${psCommand}"`;
+
+  try {
+    const { stdout, stderr } = await runCommand(command);
+    const jsonStart = stdout.indexOf('{');
+    if (jsonStart >= 0) {
+      const parsed = JSON.parse(stdout.slice(jsonStart).trim());
+      return {
+        sent: Number(parsed.sent ?? count),
+        received: Number(parsed.received ?? 0),
+        avgLatency: parsed.avgLatency == null ? null : Number(parsed.avgLatency),
+        reachable: Boolean(parsed.reachable),
+        output: stdout,
+        errorOutput: stderr,
+      };
+    }
+  } catch {
+    // fallback below
+  }
+
+  const fallbackCommand = `ping -n ${count} ${target}`;
+  try {
+    const { stdout, stderr } = await runCommand(fallbackCommand);
+    const stats = parsePingStats(stdout);
+    return {
+      ...stats,
+      output: stdout,
+      errorOutput: stderr,
+    };
+  } catch (error: any) {
+    return {
+      sent: count,
+      received: 0,
+      avgLatency: null as number | null,
+      reachable: false,
+      output: '',
+      errorOutput: error?.stderr || error?.message || 'Erreur inconnue',
+    };
+  }
+};
+
 const parsePingStats = (output: string) => {
   const sentMatch = output.match(/(?:Sent|envoyés?)\s*[=:]\s*(\d+)/i) || output.match(/(\d+)\s+packets\s+transmitted/i);
   const receivedMatch = output.match(/(?:Received|reçus?)\s*[=:]\s*(\d+)/i) || output.match(/transmitted\s*,\s*(\d+)\s+(?:packets\s+)?received/i);
@@ -43,14 +95,30 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Cible invalide.' }, { status: 400 });
   }
 
-  const command = process.platform === 'win32'
-    ? `ping -n ${count} ${target}`
-    : `ping -c ${count} ${target}`;
-
   try {
     const startedAt = Date.now();
-    const { stdout, stderr } = await runCommand(command);
-    const stats = parsePingStats(stdout);
+
+    let stats: { sent: number; received: number; avgLatency: number | null; reachable: boolean };
+    let rawOutput = '';
+    let errorOutput = '';
+
+    if (process.platform === 'win32') {
+      const result = await runWindowsPing(target, count);
+      stats = {
+        sent: result.sent,
+        received: result.received,
+        avgLatency: result.avgLatency,
+        reachable: result.reachable,
+      };
+      rawOutput = result.output || '';
+      errorOutput = result.errorOutput || '';
+    } else {
+      const command = `ping -c ${count} ${target}`;
+      const { stdout, stderr } = await runCommand(command);
+      rawOutput = stdout;
+      errorOutput = stderr;
+      stats = parsePingStats(stdout);
+    }
 
     return NextResponse.json({
       ok: true,
@@ -60,8 +128,8 @@ export async function GET(request: NextRequest) {
       received: stats.received,
       avgLatencyMs: stats.avgLatency,
       reachable: stats.reachable,
-      output: stdout,
-      errorOutput: stderr || undefined,
+      output: rawOutput || undefined,
+      errorOutput: errorOutput || undefined,
     });
   } catch (error: any) {
     return NextResponse.json(
