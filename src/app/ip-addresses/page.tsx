@@ -575,6 +575,15 @@ export default function IPAddressesPage() {
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-1">
               <p>Statut: <span className={`font-semibold ${pingResult?.reachable ? 'text-emerald-700' : 'text-rose-700'}`}>{pingResult ? (pingResult.reachable ? 'Accessible' : 'Inaccessible') : '—'}</span></p>
+              {pingResult?.reachable && (
+                <div className="pt-1">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    En ligne
+                  </span>
+                  <p className="mt-1 text-[11px] text-emerald-700">L’équipement est bien en ligne et répond aux requêtes ICMP.</p>
+                </div>
+              )}
               <p>Temps de réponse: <span className="font-semibold text-slate-800">{pingResult?.elapsedMs != null ? `${pingResult.elapsedMs} ms` : '—'}</span></p>
               <p>Paquets envoyés/reçus: <span className="font-semibold text-slate-800">{pingResult?.sent ?? '—'} / {pingResult?.received ?? '—'}</span></p>
               <p>Latence moyenne: <span className="font-semibold text-slate-800">{pingResult?.avgLatencyMs != null ? `${pingResult.avgLatencyMs} ms` : '—'}</span></p>
