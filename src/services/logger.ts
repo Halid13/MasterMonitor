@@ -1,5 +1,58 @@
 import { SystemLog, LogLevel } from '@/types';
 
+const IPV4_REGEX = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
+const IPV6_REGEX = /\b(?:[A-Fa-f0-9]{1,4}:){2,7}[A-Fa-f0-9]{1,4}\b/;
+
+const normalizeIp = (value?: string | null) => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const noMappedPrefix = trimmed.startsWith('::ffff:') ? trimmed.slice(7) : trimmed;
+  if (noMappedPrefix === '::1' || noMappedPrefix === '127.0.0.1' || noMappedPrefix === 'localhost') {
+    return undefined;
+  }
+  return noMappedPrefix;
+};
+
+const extractIpFromText = (text?: string) => {
+  if (!text) return undefined;
+  const ipv4 = text.match(IPV4_REGEX)?.[0];
+  const normalized4 = normalizeIp(ipv4);
+  if (normalized4) return normalized4;
+  const ipv6 = text.match(IPV6_REGEX)?.[0];
+  const normalized6 = normalizeIp(ipv6);
+  if (normalized6) return normalized6;
+  return undefined;
+};
+
+const inferIpSource = (ipSource?: string, objectImpacted?: string, details?: Record<string, any>) => {
+  const explicit = normalizeIp(ipSource);
+  if (explicit) return explicit;
+
+  const directCandidates = [
+    details?.ip,
+    details?.ipAddress,
+    details?.sourceIp,
+    details?.targetIp,
+    details?.deviceIp,
+  ];
+
+  for (const candidate of directCandidates) {
+    const normalized = normalizeIp(typeof candidate === 'string' ? candidate : undefined);
+    if (normalized) return normalized;
+  }
+
+  const fromObject = extractIpFromText(objectImpacted);
+  if (fromObject) return fromObject;
+
+  if (details) {
+    const fromDetails = extractIpFromText(JSON.stringify(details));
+    if (fromDetails) return fromDetails;
+  }
+
+  return undefined;
+};
+
 // Simple in-memory log storage
 let logs: SystemLog[] = [];
 const MAX_LOGS = 10000;
@@ -20,6 +73,7 @@ export const logger = {
     oldValue?: string,
     newValue?: string,
   ) => {
+    const resolvedIp = inferIpSource(undefined, objectImpacted, details);
     const log: SystemLog = {
       id: `log-${Date.now()}-${Math.random()}`,
       timestamp: new Date(),
@@ -30,6 +84,7 @@ export const logger = {
       objectImpacted,
       oldValue,
       newValue,
+      ipSource: resolvedIp,
       details,
     };
     addLog(log);
@@ -47,6 +102,7 @@ export const logger = {
     ipSource?: string,
     details?: Record<string, any>,
   ) => {
+    const resolvedIp = inferIpSource(ipSource, objectImpacted, details);
     const log: SystemLog = {
       id: `log-${Date.now()}-${Math.random()}`,
       timestamp: new Date(),
@@ -56,7 +112,7 @@ export const logger = {
       module: 'User',
       action,
       objectImpacted,
-      ipSource,
+      ipSource: resolvedIp,
       details,
     };
     addLog(log);
@@ -75,7 +131,9 @@ export const logger = {
     oldValue?: string,
     newValue?: string,
     details?: Record<string, any>,
+    ipSource?: string,
   ) => {
+    const resolvedIp = inferIpSource(ipSource, objectId, details);
     const log: SystemLog = {
       id: `log-${Date.now()}-${Math.random()}`,
       timestamp: new Date(),
@@ -87,6 +145,7 @@ export const logger = {
       objectImpacted: objectId,
       oldValue,
       newValue,
+      ipSource: resolvedIp,
       details,
     };
     addLog(log);
@@ -104,6 +163,7 @@ export const logger = {
     ipSource?: string,
     details?: Record<string, any>,
   ) => {
+    const resolvedIp = inferIpSource(ipSource, objectImpacted, details);
     const log: SystemLog = {
       id: `log-${Date.now()}-${Math.random()}`,
       timestamp: new Date(),
@@ -113,7 +173,7 @@ export const logger = {
       module: 'Security',
       action,
       objectImpacted,
-      ipSource,
+      ipSource: resolvedIp,
       details,
     };
     addLog(log);

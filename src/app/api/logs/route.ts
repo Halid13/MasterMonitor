@@ -3,6 +3,7 @@ import { SystemLog, LogCategory, LogLevel } from '@/types';
 import { logger } from '@/services/logger';
 
 const IPv4_REGEX = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
+const IPv6_REGEX = /\b(?:[A-Fa-f0-9]{1,4}:){2,7}[A-Fa-f0-9]{1,4}\b/;
 
 const normalizeIp = (value?: string | null) => {
   if (!value) return undefined;
@@ -51,15 +52,19 @@ const extractIpFromPayload = (objectImpacted?: string, details?: Record<string, 
 
   if (typeof objectImpacted === 'string') {
     const objectMatch = objectImpacted.match(IPv4_REGEX)?.[0];
-    const normalized = normalizeIp(objectMatch);
-    if (normalized) return normalized;
+    const objectIpv4 = normalizeIp(objectMatch);
+    if (objectIpv4) return objectIpv4;
+    const objectIpv6 = normalizeIp(objectImpacted.match(IPv6_REGEX)?.[0]);
+    if (objectIpv6) return objectIpv6;
   }
 
   if (details) {
     const text = JSON.stringify(details);
     const detailMatch = text.match(IPv4_REGEX)?.[0];
-    const normalized = normalizeIp(detailMatch);
-    if (normalized) return normalized;
+    const detailIpv4 = normalizeIp(detailMatch);
+    if (detailIpv4) return detailIpv4;
+    const detailIpv6 = normalizeIp(text.match(IPv6_REGEX)?.[0]);
+    if (detailIpv6) return detailIpv6;
   }
 
   return undefined;
@@ -85,7 +90,15 @@ export async function GET(request: NextRequest) {
   });
 
   const total = filtered.length;
-  const paginated = filtered.slice(offset, offset + limit);
+  const paginated = filtered.slice(offset, offset + limit).map((log) => {
+    if (log.ipSource) return log;
+    const inferred = extractIpFromPayload(log.objectImpacted, log.details);
+    if (!inferred) return log;
+    return {
+      ...log,
+      ipSource: inferred,
+    };
+  });
 
   return NextResponse.json({
     ok: true,
