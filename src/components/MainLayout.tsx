@@ -77,6 +77,7 @@ export const MainLayout = ({ children }: LayoutProps) => {
     { href: '/equipment', label: 'Équipements', icon: Monitor, color: 'from-purple-500 to-pink-500' },
     { href: '/users', label: 'Utilisateurs', icon: Users, color: 'from-emerald-500 to-teal-500' },
     { href: '/servers', label: 'Serveurs', icon: Server, color: 'from-yellow-500 to-orange-500' },
+    { href: '/ip-addresses', label: 'Sous Réseau', icon: Monitor, color: 'from-cyan-500 to-blue-500' },
     { href: '/tickets', label: 'Tickets', icon: Ticket, color: 'from-pink-500 to-rose-500' },
     { href: '/logs', label: 'Logs', icon: FileText, color: 'from-indigo-500 to-blue-500' },
   ];

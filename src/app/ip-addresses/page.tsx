@@ -34,8 +34,11 @@ type SubnetCalculation = {
   actualSubnets?: number;
 };
 
-const ipToInt = (ip: string) => {
-  const parts = ip.trim().split('.');
+const ipToInt = (ip: unknown) => {
+  if (typeof ip !== 'string') return null;
+  const normalized = ip.trim();
+  if (!normalized) return null;
+  const parts = normalized.split('.');
   if (parts.length !== 4) return null;
   const numbers = parts.map((part) => Number(part));
   if (numbers.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return null;
@@ -212,10 +215,18 @@ const isIpInRange = (ip: string, start: string, end: string) => {
 };
 
 export default function IPAddressesPage() {
-  const { subnets, addSubnet, updateSubnet, deleteSubnet, ipAddresses } = useDashboardStore();
+  const {
+    subnets: storeSubnets,
+    addSubnet,
+    updateSubnet,
+    deleteSubnet,
+    ipAddresses: storeIpAddresses,
+  } = useDashboardStore();
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const subnets = Array.isArray(storeSubnets) ? storeSubnets : [];
+  const ipAddresses = Array.isArray(storeIpAddresses) ? storeIpAddresses : [];
   const [formData, setFormData] = useState<SubnetForm>({
     name: '',
     mainNetworkCidr: '',
@@ -252,7 +263,10 @@ export default function IPAddressesPage() {
 
   const usedCountBySubnet = (subnet: Subnet) => {
     if (!subnet.rangeStart || !subnet.rangeEnd) return 0;
-    return ipAddresses.filter((ip) => isIpInRange(ip.address, subnet.rangeStart, subnet.rangeEnd)).length;
+    return ipAddresses.filter((ip) => {
+      if (!ip || typeof ip.address !== 'string') return false;
+      return isIpInRange(ip.address, subnet.rangeStart, subnet.rangeEnd);
+    }).length;
   };
 
   const totalUsable = useMemo(() => subnets.reduce((sum, subnet) => sum + subnet.usableHosts, 0), [subnets]);
