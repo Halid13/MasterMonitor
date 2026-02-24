@@ -122,13 +122,18 @@ export const StatusPieChart = ({ data }: { data: any[] }) => (
           ))}
         </Pie>
         <Tooltip
+          wrapperStyle={{ zIndex: 1000 }}
           contentStyle={{
-            backgroundColor: '#1f2937',
-            border: '1px solid #374151',
-            borderRadius: '8px',
-            color: '#fff',
+            backgroundColor: '#0f172a',
+            border: '1px solid #334155',
+            borderRadius: '10px',
+            color: '#f8fafc',
+            padding: '10px 12px',
+            boxShadow: '0 10px 25px rgba(2, 6, 23, 0.45)',
           }}
-          formatter={(value) => `${value} équipements`}
+          labelStyle={{ color: '#cbd5e1', fontSize: '12px', fontWeight: 600 }}
+          itemStyle={{ color: '#f8fafc', fontSize: '13px', fontWeight: 700 }}
+          formatter={(value, name) => [`${value} équipements`, name]}
         />
       </PieChart>
     </ResponsiveContainer>
