@@ -208,7 +208,7 @@ export async function GET() {
   const network = await getNetworkRate();
   const primaryNetwork = getPrimaryNetwork();
   const serverName = os.hostname();
-  const serverId = `local-${serverName}`;
+  const serverId = 'local-pc';
 
   checkAnomaly('cpu', cpu, 85, serverId, serverName);
   checkAnomaly('memory', Number(memory.toFixed(2)), 85, serverId, serverName);
@@ -240,7 +240,7 @@ export async function GET() {
     await persistMonitoringSnapshot({
       servers: [
         {
-          id: `local-${payload.host}`,
+          id: 'local-pc',
           name: payload.host,
           ipAddress: payload.ipAddress,
           status: 'online',

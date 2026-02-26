@@ -653,3 +653,204 @@ export const getFilteredLogs = async (params: {
     logs: logs.rows,
   };
 };
+
+export const getStoreBootstrapData = async () => {
+  const [users, equipment, servers, tickets, alerts, ipAddresses, subnets, logs] = await Promise.all([
+    dbQuery(
+      `
+      SELECT id, username, email, first_name, last_name, department, role, is_active, last_login, created_at, updated_at
+      FROM users
+      ORDER BY updated_at DESC
+      `,
+    ),
+    dbQuery(
+      `
+      SELECT id, name, type, serial_number, hardware_id, ip_address, status,
+             assigned_to_user, department_service, date_in_service, created_at, updated_at
+      FROM equipment
+      ORDER BY updated_at DESC
+      `,
+    ),
+    dbQuery(
+      `
+      SELECT id, name, ip_address, status, health_score, cpu_usage, memory_usage, disk_usage,
+             network_in, network_out, process_count, uptime, services, last_health_check, created_at, updated_at
+      FROM servers
+      ORDER BY updated_at DESC
+      `,
+    ),
+    dbQuery(
+      `
+      SELECT id, title, description, priority, status, category, created_by, assigned_to,
+             created_at, updated_at, comments
+      FROM tickets
+      ORDER BY updated_at DESC
+      `,
+    ),
+    dbQuery(
+      `
+      SELECT id, title, message, type, source, is_resolved, created_at, resolved_at
+      FROM alerts
+      ORDER BY created_at DESC
+      `,
+    ),
+    dbQuery(
+      `
+      SELECT id, address, subnet, gateway, dns_servers, is_active, assigned_to, last_seen, created_at, updated_at
+      FROM ip_addresses
+      ORDER BY updated_at DESC
+      `,
+    ),
+    dbQuery(
+      `
+      SELECT id, name, main_network_cidr, subnet_cidr, network_address, prefix, netmask,
+             range_start, range_end, usable_hosts, allocation, created_at, updated_at
+      FROM subnets
+      ORDER BY updated_at DESC
+      `,
+    ),
+    dbQuery(
+      `
+      SELECT id, timestamp, category, level, username, module, action, object_impacted, old_value, new_value, ip_source, details
+      FROM logs
+      ORDER BY timestamp DESC
+      LIMIT 500
+      `,
+    ),
+  ]);
+
+  const normalizedServersMap = new Map<string, any>();
+  for (const row of servers.rows as any[]) {
+    const isLegacyLocal = typeof row.id === 'string' && row.id.startsWith('local-');
+    const normalizedId = isLegacyLocal ? 'local-pc' : row.id;
+
+    const current = normalizedServersMap.get(normalizedId);
+    if (!current) {
+      normalizedServersMap.set(normalizedId, { ...row, id: normalizedId });
+      continue;
+    }
+
+    const currentTs = new Date(current.updated_at || current.last_health_check || 0).getTime();
+    const nextTs = new Date(row.updated_at || row.last_health_check || 0).getTime();
+    if (nextTs >= currentTs) {
+      normalizedServersMap.set(normalizedId, { ...row, id: normalizedId });
+    }
+  }
+
+  const normalizedServers = Array.from(normalizedServersMap.values());
+
+  return {
+    users: users.rows.map((row: any) => ({
+      id: row.id,
+      username: row.username,
+      email: row.email,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      department: row.department,
+      role: row.role,
+      isActive: row.is_active,
+      lastLogin: row.last_login,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })),
+    equipment: equipment.rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      type: row.type,
+      serialNumber: row.serial_number,
+      hardwareId: row.hardware_id,
+      ipAddress: row.ip_address,
+      status: row.status,
+      assignedToUser: row.assigned_to_user,
+      departmentService: row.department_service,
+      dateInService: row.date_in_service,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })),
+    servers: normalizedServers.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      ipAddress: row.ip_address,
+      status: row.status,
+      healthScore: Number(row.health_score || 0),
+      metrics: {
+        id: `${row.id}-metrics`,
+        serverId: row.id,
+        cpuUsage: Number(row.cpu_usage || 0),
+        memoryUsage: Number(row.memory_usage || 0),
+        diskUsage: Number(row.disk_usage || 0),
+        networkIn: Number(row.network_in || 0),
+        networkOut: Number(row.network_out || 0),
+        processCount: Number(row.process_count || 0),
+        uptime: Number(row.uptime || 0),
+        timestamp: row.updated_at,
+      },
+      services: Array.isArray(row.services) ? row.services : [],
+      lastHealthCheck: row.last_health_check || row.updated_at,
+    })),
+    tickets: tickets.rows.map((row: any) => ({
+      id: row.id,
+      title: row.title,
+      description: row.description || '',
+      priority: row.priority,
+      status: row.status,
+      category: row.category,
+      assignedTo: row.assigned_to,
+      createdBy: row.created_by || 'system',
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      comments: Array.isArray(row.comments) ? row.comments : [],
+    })),
+    alerts: alerts.rows.map((row: any) => ({
+      id: row.id,
+      title: row.title,
+      message: row.message,
+      type: row.type,
+      source: row.source,
+      isResolved: row.is_resolved,
+      createdAt: row.created_at,
+      resolvedAt: row.resolved_at,
+    })),
+    ipAddresses: ipAddresses.rows.map((row: any) => ({
+      id: row.id,
+      address: row.address,
+      subnet: row.subnet || '',
+      gateway: row.gateway || '',
+      dnsServers: Array.isArray(row.dns_servers) ? row.dns_servers : [],
+      isActive: row.is_active,
+      assignedTo: row.assigned_to,
+      lastSeen: row.last_seen,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })),
+    subnets: subnets.rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      mainNetworkCidr: row.main_network_cidr,
+      subnetCidr: row.subnet_cidr,
+      networkAddress: row.network_address,
+      prefix: Number(row.prefix || 0),
+      netmask: row.netmask,
+      rangeStart: row.range_start,
+      rangeEnd: row.range_end,
+      usableHosts: Number(row.usable_hosts || 0),
+      allocation: row.allocation || '',
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })),
+    logs: logs.rows.map((row: any) => ({
+      id: row.id,
+      timestamp: row.timestamp,
+      category: row.category,
+      level: row.level,
+      username: row.username,
+      module: row.module,
+      action: row.action,
+      objectImpacted: row.object_impacted,
+      oldValue: row.old_value,
+      newValue: row.new_value,
+      ipSource: row.ip_source,
+      details: row.details,
+    })),
+  };
+};

@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Menu, X, Bell, LogOut, Settings, LayoutDashboard, Users, Server, Ticket, FileText, Shield, Monitor } from 'lucide-react';
 import { useDashboardStore } from '@/store/dashboard';
@@ -18,9 +18,33 @@ export const MainLayout = ({ children }: LayoutProps) => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [adminName, setAdminName] = useState<string>('Administrateur');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isStoreBootstrapped, setIsStoreBootstrapped] = useState(false);
   const browserTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', []);
 
-  const { alerts, logs, users, equipment, servers, tickets, ipAddresses, subnets } = useDashboardStore();
+  const {
+    alerts,
+    logs,
+    users,
+    equipment,
+    servers,
+    tickets,
+    ipAddresses,
+    subnets,
+    setUsers,
+    setEquipment,
+    setServers,
+    setTickets,
+    setAlerts,
+    setIPAddresses,
+    setSubnets,
+    setLogs,
+  } = useDashboardStore();
+
+  const syncStateRef = useRef({ users, equipment, servers, tickets, alerts, ipAddresses, subnets });
+
+  useEffect(() => {
+    syncStateRef.current = { users, equipment, servers, tickets, alerts, ipAddresses, subnets };
+  }, [users, equipment, servers, tickets, alerts, ipAddresses, subnets]);
 
   const notificationItems = useMemo(() => {
     const recentAlerts = alerts
@@ -62,6 +86,41 @@ export const MainLayout = ({ children }: LayoutProps) => {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const bootstrapStoreFromDb = async () => {
+      try {
+        const res = await fetch('/api/monitoring?view=store', { cache: 'no-store' });
+        const data = await res.json();
+        if (!isMounted || !data?.ok || !data?.store) return;
+
+        setUsers(Array.isArray(data.store.users) ? data.store.users : []);
+        setEquipment(Array.isArray(data.store.equipment) ? data.store.equipment : []);
+        setServers(Array.isArray(data.store.servers) ? data.store.servers : []);
+        setTickets(Array.isArray(data.store.tickets) ? data.store.tickets : []);
+        setAlerts(Array.isArray(data.store.alerts) ? data.store.alerts : []);
+        setIPAddresses(Array.isArray(data.store.ipAddresses) ? data.store.ipAddresses : []);
+        setSubnets(Array.isArray(data.store.subnets) ? data.store.subnets : []);
+        setLogs(Array.isArray(data.store.logs) ? data.store.logs : []);
+      } catch {
+        // keep app usable even if bootstrap fails
+      } finally {
+        if (isMounted) {
+          setIsStoreBootstrapped(true);
+        }
+      }
+    };
+
+    void bootstrapStoreFromDb();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [setAlerts, setEquipment, setIPAddresses, setLogs, setServers, setSubnets, setTickets, setUsers]);
+
+  useEffect(() => {
+    if (!isStoreBootstrapped) return;
+
     let destroyed = false;
 
     const getConnectedUser = () => {
@@ -76,46 +135,58 @@ export const MainLayout = ({ children }: LayoutProps) => {
     const sendSnapshot = async (mode: 'realtime' | 'dynamic' | 'static') => {
       if (destroyed) return;
       try {
+        const current = syncStateRef.current;
+        const hasData =
+          current.users.length > 0 ||
+          current.equipment.length > 0 ||
+          current.servers.length > 0 ||
+          current.tickets.length > 0 ||
+          current.alerts.length > 0 ||
+          current.ipAddresses.length > 0 ||
+          current.subnets.length > 0;
+
+        if (!hasData) return;
+
         const connectedUser = getConnectedUser();
         const payload: any = {
           connectedUser,
           realtime: {
             sentAt: new Date().toISOString(),
-            serversCount: servers.length,
-            alertsCount: alerts.length,
-            openTicketsCount: tickets.filter((ticket) => ticket.status !== 'closed').length,
+            serversCount: current.servers.length,
+            alertsCount: current.alerts.length,
+            openTicketsCount: current.tickets.filter((ticket) => ticket.status !== 'closed').length,
           },
           dynamic: {
             sentAt: new Date().toISOString(),
-            equipmentCount: equipment.length,
-            ipCount: ipAddresses.length,
-            subnetCount: subnets.length,
+            equipmentCount: current.equipment.length,
+            ipCount: current.ipAddresses.length,
+            subnetCount: current.subnets.length,
           },
           staticData: {
             sentAt: new Date().toISOString(),
-            usersCount: users.length,
+            usersCount: current.users.length,
           },
         };
 
         if (mode === 'realtime') {
-          payload.servers = servers;
-          payload.tickets = tickets;
-          payload.alerts = alerts;
-          payload.ipAddresses = ipAddresses;
+          payload.servers = current.servers;
+          payload.tickets = current.tickets;
+          payload.alerts = current.alerts;
+          payload.ipAddresses = current.ipAddresses;
         }
 
         if (mode === 'dynamic') {
-          payload.equipment = equipment;
-          payload.ipAddresses = ipAddresses;
-          payload.subnets = subnets;
+          payload.equipment = current.equipment;
+          payload.ipAddresses = current.ipAddresses;
+          payload.subnets = current.subnets;
         }
 
         if (mode === 'static') {
-          payload.users = users;
-          payload.equipment = equipment;
-          payload.servers = servers;
-          payload.tickets = tickets;
-          payload.subnets = subnets;
+          payload.users = current.users;
+          payload.equipment = current.equipment;
+          payload.servers = current.servers;
+          payload.tickets = current.tickets;
+          payload.subnets = current.subnets;
         }
 
         await fetch('/api/monitoring', {
@@ -147,7 +218,7 @@ export const MainLayout = ({ children }: LayoutProps) => {
       window.clearInterval(dynamicTimer);
       window.clearInterval(staticTimer);
     };
-  }, [alerts, equipment, ipAddresses, servers, subnets, tickets, users]);
+  }, [isStoreBootstrapped]);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);

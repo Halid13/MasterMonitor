@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getDynamicMonitoringData,
   getRealtimeMonitoringData,
+  getStoreBootstrapData,
   getStaticMonitoringData,
   persistMonitoringSnapshot,
 } from '@/lib/monitoring-db';
@@ -27,6 +28,11 @@ export async function GET(request: NextRequest) {
   const view = request.nextUrl.searchParams.get('view') || 'realtime';
 
   try {
+    if (view === 'store') {
+      const store = await getStoreBootstrapData();
+      return NextResponse.json({ ok: true, store });
+    }
+
     if (view === 'dynamic') {
       const data = await getDynamicMonitoringData();
       return NextResponse.json({ ok: true, ...data });
