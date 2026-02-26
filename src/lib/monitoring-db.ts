@@ -17,6 +17,7 @@ type SnapshotPayload = {
   realtime?: AnyObject;
   dynamic?: AnyObject;
   staticData?: AnyObject;
+  deletedEquipmentIds?: string[];
 };
 
 const asDate = (value: unknown) => {
@@ -110,6 +111,20 @@ const upsertEquipment = async (client: PoolClient, equipment: AnyObject) => {
 };
 
 const upsertServer = async (client: PoolClient, server: AnyObject) => {
+  const rawId = normalizeText(server.id);
+  const ipAddress = normalizeText(server.ipAddress, normalizeText(server.ip, '0.0.0.0'));
+
+  let resolvedId = rawId;
+  if (ipAddress && ipAddress !== '0.0.0.0') {
+    const existingByIp = await client.query<{ id: string }>(
+      `SELECT id FROM servers WHERE LOWER(ip_address) = LOWER($1) LIMIT 1`,
+      [ipAddress],
+    );
+    if (existingByIp.rows[0]?.id) {
+      resolvedId = existingByIp.rows[0].id;
+    }
+  }
+
   await client.query(
     `
     INSERT INTO servers (
@@ -140,9 +155,9 @@ const upsertServer = async (client: PoolClient, server: AnyObject) => {
       updated_at = NOW()
     `,
     [
-      normalizeText(server.id),
+      resolvedId,
       normalizeText(server.name, normalizeText(server.host, 'Unknown')),
-      normalizeText(server.ipAddress, normalizeText(server.ip, '0.0.0.0')),
+      ipAddress,
       normalizeText(server.status, 'offline'),
       Number(server.healthScore ?? 0),
       Number(server.metrics?.cpuUsage ?? server.cpu ?? 0),
@@ -360,6 +375,14 @@ export const persistMonitoringSnapshot = async (payload: SnapshotPayload) => {
   };
 
   await withTransaction(async (client) => {
+    const deletedEquipmentIds = Array.isArray(payload.deletedEquipmentIds)
+      ? payload.deletedEquipmentIds.map((id) => String(id || '').trim()).filter(Boolean)
+      : [];
+
+    if (deletedEquipmentIds.length > 0) {
+      await client.query('DELETE FROM equipment WHERE id = ANY($1::text[])', [deletedEquipmentIds]);
+    }
+
     for (const user of payload.users || []) await upsertUser(client, user);
     for (const item of payload.equipment || []) await upsertEquipment(client, item);
     for (const server of payload.servers || []) await upsertServer(client, server);
@@ -723,17 +746,21 @@ export const getStoreBootstrapData = async () => {
   for (const row of servers.rows as any[]) {
     const isLegacyLocal = typeof row.id === 'string' && row.id.startsWith('local-');
     const normalizedId = isLegacyLocal ? 'local-pc' : row.id;
+    const ipKey = typeof row.ip_address === 'string' ? row.ip_address.trim().toLowerCase() : '';
+    const normalizedKey = isLegacyLocal
+      ? 'local-pc'
+      : (ipKey ? `ip:${ipKey}` : `id:${normalizedId}`);
 
-    const current = normalizedServersMap.get(normalizedId);
+    const current = normalizedServersMap.get(normalizedKey);
     if (!current) {
-      normalizedServersMap.set(normalizedId, { ...row, id: normalizedId });
+      normalizedServersMap.set(normalizedKey, { ...row, id: normalizedId });
       continue;
     }
 
     const currentTs = new Date(current.updated_at || current.last_health_check || 0).getTime();
     const nextTs = new Date(row.updated_at || row.last_health_check || 0).getTime();
     if (nextTs >= currentTs) {
-      normalizedServersMap.set(normalizedId, { ...row, id: normalizedId });
+      normalizedServersMap.set(normalizedKey, { ...row, id: normalizedId });
     }
   }
 

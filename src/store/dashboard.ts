@@ -571,8 +571,15 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   // Cleanup equipment assigned to users that no longer exist in AD
   cleanupOrphanedEquipment: (validUserIds: string[]) =>
     set((state) => {
+      const validUsers = new Set(validUserIds.map((id) => String(id || '').trim().toLowerCase()).filter(Boolean));
+      const isValidUser = (value?: string) => {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (!normalized) return false;
+        return validUsers.has(normalized);
+      };
+
       const orphanedEquipment = state.equipment.filter(
-        (e) => e.assignedToUser && !validUserIds.includes(e.assignedToUser)
+        (e) => e.assignedToUser && !isValidUser(e.assignedToUser)
       );
 
       if (orphanedEquipment.length === 0) {
@@ -596,7 +603,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
 
       // Move orphaned equipment to stock
       const updatedEquipment = state.equipment.map((e) => {
-        if (e.assignedToUser && !validUserIds.includes(e.assignedToUser)) {
+        if (e.assignedToUser && !isValidUser(e.assignedToUser)) {
           return {
             ...e,
             status: 'stock' as const,

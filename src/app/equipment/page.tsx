@@ -51,12 +51,43 @@ export default function EquipmentPage() {
   const [adUsersLoading, setAdUsersLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'in-service' | 'stock'>('all');
   const [deleteTarget, setDeleteTarget] = useState<Equipment | null>(null);
   const [formData, setFormData] = useState<Partial<Equipment>>({
     type: 'laptop',
     status: 'stock',
   });
+
+  const persistEquipmentNow = async (items: Equipment[]) => {
+    try {
+      await fetch('/api/monitoring', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          equipment: items,
+          dynamic: {
+            sentAt: new Date().toISOString(),
+            equipmentCount: equipment.length,
+          },
+        }),
+      });
+    } catch {
+      // fallback: periodic sync will retry later
+    }
+  };
+
+  const getUserByAnyKey = (value?: string) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return undefined;
+
+    return adUsers.find((user) => {
+      const keys = [user.id, user.username, user.email]
+        .filter(Boolean)
+        .map((key) => String(key).trim().toLowerCase());
+      return keys.includes(normalized);
+    });
+  };
 
   // Fetch AD users and cleanup orphaned equipment
   useEffect(() => {
@@ -67,8 +98,8 @@ export default function EquipmentPage() {
         if (data?.ok && Array.isArray(data.users)) {
           setAdUsers(data.users);
           // Cleanup equipment assigned to users that no longer exist in AD
-          const validUserIds = data.users.map((u: ADUser) => u.id);
-          cleanupOrphanedEquipment(validUserIds);
+          const validUserKeys = data.users.flatMap((u: ADUser) => [u.id, u.username, u.email]).filter(Boolean);
+          cleanupOrphanedEquipment(validUserKeys as string[]);
         }
       } catch (error) {
         console.error('Failed to fetch AD users:', error);
@@ -79,8 +110,9 @@ export default function EquipmentPage() {
     fetchADUsers();
   }, [cleanupOrphanedEquipment]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
 
     const payload: Partial<Equipment> = { ...formData, updatedAt: new Date() };
 
@@ -90,13 +122,28 @@ export default function EquipmentPage() {
       payload.departmentService = undefined;
       payload.dateInService = undefined;
     } else if (payload.status === 'in-service') {
-      const selectedUser = adUsers.find((u) => u.id === payload.assignedToUser);
+      const selectedUser = getUserByAnyKey(payload.assignedToUser);
+
+      if (!selectedUser) {
+        setFormError('Veuillez sélectionner un utilisateur valide pour cet équipement en service.');
+        return;
+      }
+
+      payload.assignedToUser = selectedUser?.id || payload.assignedToUser;
       payload.departmentService = payload.departmentService || selectedUser?.department;
       payload.dateInService = payload.dateInService || new Date();
     }
 
     if (editingId) {
+      const previous = equipment.find((item) => item.id === editingId);
+      const updatedEquipment: Equipment = {
+        ...(previous as Equipment),
+        ...payload,
+        id: editingId,
+        updatedAt: new Date(),
+      };
       updateEquipment(editingId, payload);
+      await persistEquipmentNow([updatedEquipment]);
       setEditingId(null);
     } else {
       const newEquipment: Equipment = {
@@ -107,15 +154,17 @@ export default function EquipmentPage() {
         hardwareId: formData.hardwareId || '',
         status: payload.status as any,
         assignedToUser: payload.status === 'in-service' ? payload.assignedToUser : undefined,
-        departmentService: payload.status === 'in-service' ? (payload.departmentService || adUsers.find(u => u.id === payload.assignedToUser)?.department) : undefined,
+        departmentService: payload.status === 'in-service' ? (payload.departmentService || getUserByAnyKey(payload.assignedToUser)?.department) : undefined,
         dateInService: payload.status === 'in-service' ? (payload.dateInService || new Date()) : undefined,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
       addEquipment(newEquipment);
+      await persistEquipmentNow([newEquipment]);
     }
 
     setFormData({ type: 'laptop', status: 'stock' });
+    setFormError(null);
     setShowModal(false);
   };
 
@@ -376,7 +425,7 @@ export default function EquipmentPage() {
   const EquipmentCard = ({ item }: { item: Equipment }) => {
     const TypeIcon = getTypeIcon(item.type);
     const statusColor = getStatusColor(item.status);
-    const assignedUser = useMemo(() => adUsers.find(u => u.id === item.assignedToUser), [adUsers, item.assignedToUser]);
+    const assignedUser = useMemo(() => getUserByAnyKey(item.assignedToUser), [adUsers, item.assignedToUser]);
     
     return (
       <div
@@ -429,10 +478,32 @@ export default function EquipmentPage() {
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
+          {item.status === 'stock' && (
+            <button
+              onClick={() => {
+                setEditingId(item.id);
+                setFormError(null);
+                setFormData({
+                  ...item,
+                  status: 'in-service',
+                  assignedToUser: getUserByAnyKey(item.assignedToUser)?.id || item.assignedToUser,
+                });
+                setShowModal(true);
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors text-xs font-semibold"
+              title="Assigner à un utilisateur"
+            >
+              Assigner
+            </button>
+          )}
           <button
             onClick={() => {
               setEditingId(item.id);
-              setFormData(item);
+              setFormError(null);
+              setFormData({
+                ...item,
+                assignedToUser: getUserByAnyKey(item.assignedToUser)?.id || item.assignedToUser,
+              });
               setShowModal(true);
             }}
             className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
@@ -539,6 +610,12 @@ export default function EquipmentPage() {
                 </button>
               </div>
 
+              {formError && (
+                <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {formError}
+                </div>
+              )}
+
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
                   <div className="group">
@@ -620,45 +697,43 @@ export default function EquipmentPage() {
                         </div>
                       )}
 
-                      {(formData.type === 'laptop' || formData.type === 'phone' || formData.type === 'other') && (
-                        <div className="group">
-                          <label className="block text-xs font-semibold text-slate-900 mb-2">Utilisateur assigné</label>
-                          <select
-                            value={formData.assignedToUser || ''}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (!val) {
-                                setFormData({
-                                  ...formData,
-                                  assignedToUser: undefined,
-                                  departmentService: undefined,
-                                  dateInService: undefined,
-                                  status: 'stock',
-                                });
-                                return;
-                              }
-                              const u = adUsers.find((us) => us.id === val);
+                      <div className="group">
+                        <label className="block text-xs font-semibold text-slate-900 mb-2">Utilisateur assigné</label>
+                        <select
+                          value={formData.assignedToUser || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (!val) {
                               setFormData({
                                 ...formData,
-                                assignedToUser: val,
-                                departmentService: u?.department || formData.departmentService,
-                                dateInService: formData.dateInService || new Date(),
-                                status: 'in-service',
+                                assignedToUser: undefined,
+                                departmentService: undefined,
+                                dateInService: undefined,
+                                status: 'stock',
                               });
-                            }}
-                            className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
-                            disabled={adUsersLoading}
-                            size={3}
-                          >
-                            <option value="">{adUsersLoading ? 'Chargement...' : '— Sélectionner un utilisateur —'}</option>
-                            {adUsers.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.firstName} {u.lastName} ({u.username})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
+                              return;
+                            }
+                            const u = adUsers.find((us) => us.id === val);
+                            setFormData({
+                              ...formData,
+                              assignedToUser: val,
+                              departmentService: u?.department || formData.departmentService,
+                              dateInService: formData.dateInService || new Date(),
+                              status: 'in-service',
+                            });
+                          }}
+                          className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                          disabled={adUsersLoading}
+                          size={3}
+                        >
+                          <option value="">{adUsersLoading ? 'Chargement...' : '— Sélectionner un utilisateur —'}</option>
+                          {adUsers.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.firstName} {u.lastName} ({u.username})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
                       <div className="group">
                         <label className="block text-xs font-semibold text-slate-900 mb-2">Date de mise en service</label>
@@ -793,6 +868,11 @@ export default function EquipmentPage() {
               </button>
               <button
                 onClick={() => {
+                  void fetch('/api/monitoring', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ deletedEquipmentIds: [deleteTarget.id] }),
+                  }).catch(() => {});
                   deleteEquipment(deleteTarget.id);
                   setDeleteTarget(null);
                 }}
