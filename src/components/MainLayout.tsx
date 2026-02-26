@@ -20,7 +20,7 @@ export const MainLayout = ({ children }: LayoutProps) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const browserTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', []);
 
-  const { alerts, logs } = useDashboardStore();
+  const { alerts, logs, users, equipment, servers, tickets, ipAddresses, subnets } = useDashboardStore();
 
   const notificationItems = useMemo(() => {
     const recentAlerts = alerts
@@ -60,6 +60,94 @@ export const MainLayout = ({ children }: LayoutProps) => {
       }
     }
   }, []);
+
+  useEffect(() => {
+    let destroyed = false;
+
+    const getConnectedUser = () => {
+      const cookie = document.cookie
+        .split('; ')
+        .find((row) => row.startsWith('mm_user='));
+      if (!cookie) return undefined;
+      const raw = decodeURIComponent(cookie.split('=')[1] || '').trim();
+      return raw || undefined;
+    };
+
+    const sendSnapshot = async (mode: 'realtime' | 'dynamic' | 'static') => {
+      if (destroyed) return;
+      try {
+        const connectedUser = getConnectedUser();
+        const payload: any = {
+          connectedUser,
+          realtime: {
+            sentAt: new Date().toISOString(),
+            serversCount: servers.length,
+            alertsCount: alerts.length,
+            openTicketsCount: tickets.filter((ticket) => ticket.status !== 'closed').length,
+          },
+          dynamic: {
+            sentAt: new Date().toISOString(),
+            equipmentCount: equipment.length,
+            ipCount: ipAddresses.length,
+            subnetCount: subnets.length,
+          },
+          staticData: {
+            sentAt: new Date().toISOString(),
+            usersCount: users.length,
+          },
+        };
+
+        if (mode === 'realtime') {
+          payload.servers = servers;
+          payload.tickets = tickets;
+          payload.alerts = alerts;
+          payload.ipAddresses = ipAddresses;
+        }
+
+        if (mode === 'dynamic') {
+          payload.equipment = equipment;
+          payload.ipAddresses = ipAddresses;
+          payload.subnets = subnets;
+        }
+
+        if (mode === 'static') {
+          payload.users = users;
+          payload.equipment = equipment;
+          payload.servers = servers;
+          payload.tickets = tickets;
+          payload.subnets = subnets;
+        }
+
+        await fetch('/api/monitoring', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch {
+        // silent: dashboard should continue even when sync fails
+      }
+    };
+
+    void sendSnapshot('realtime');
+    const realtimeTimer = window.setInterval(() => {
+      void sendSnapshot('realtime');
+    }, 5000);
+
+    const dynamicTimer = window.setInterval(() => {
+      void sendSnapshot('dynamic');
+    }, 30000);
+
+    const staticTimer = window.setInterval(() => {
+      void sendSnapshot('static');
+    }, 5 * 60 * 1000);
+
+    return () => {
+      destroyed = true;
+      window.clearInterval(realtimeTimer);
+      window.clearInterval(dynamicTimer);
+      window.clearInterval(staticTimer);
+    };
+  }, [alerts, equipment, ipAddresses, servers, subnets, tickets, users]);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);

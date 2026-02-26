@@ -61,6 +61,42 @@ const MAX_LOGS = 10000;
 type LogListener = (log: SystemLog) => void;
 const listeners: Set<LogListener> = new Set();
 
+const persistLogToDb = async (log: SystemLog) => {
+  if (typeof window !== 'undefined') return;
+
+  try {
+    const { dbQuery } = await import('@/lib/postgres');
+    await dbQuery(
+      `
+      INSERT INTO logs (
+        id, timestamp, category, level, username, module, action, object_impacted,
+        old_value, new_value, ip_source, details
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,
+        $9,$10,$11,$12::jsonb
+      )
+      ON CONFLICT (id) DO NOTHING
+      `,
+      [
+        log.id,
+        log.timestamp,
+        log.category,
+        log.level,
+        log.username || null,
+        log.module,
+        log.action,
+        log.objectImpacted,
+        log.oldValue || null,
+        log.newValue || null,
+        log.ipSource || null,
+        JSON.stringify(log.details || {}),
+      ],
+    );
+  } catch {
+    // keep in-memory behavior even if DB is unavailable
+  }
+};
+
 export const logger = {
   /**
    * Log système: Événements techniques du système (démarrage services, changements métriques, etc.)
@@ -297,6 +333,8 @@ export const logger = {
 // Internal function to add log
 function addLog(log: SystemLog) {
   logs = [log, ...logs].slice(0, MAX_LOGS);
+
+  void persistLogToDb(log);
   
   // Notify listeners
   listeners.forEach((listener) => {

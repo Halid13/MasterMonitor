@@ -3,6 +3,7 @@ import os from 'os';
 import { exec } from 'child_process';
 import { captureSystemEvents } from '@/services/eventCapture';
 import { logger } from '@/services/logger';
+import { persistMonitoringSnapshot } from '@/lib/monitoring-db';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -216,7 +217,7 @@ export async function GET() {
   }
   checkAnomaly('load', Number(loadPercent.toFixed(2)), 90, serverId, serverName);
 
-  return NextResponse.json({
+  const payload = {
     ok: true,
     timestamp: Date.now(),
     cpu,
@@ -233,5 +234,42 @@ export async function GET() {
     interface: primaryNetwork.name,
     diskDetail: disk,
     network,
-  });
+  };
+
+  try {
+    await persistMonitoringSnapshot({
+      servers: [
+        {
+          id: `local-${payload.host}`,
+          name: payload.host,
+          ipAddress: payload.ipAddress,
+          status: 'online',
+          healthScore: Math.round(100 - Math.max(payload.cpu || 0, payload.memory || 0, payload.disk || 0)),
+          metrics: {
+            cpuUsage: payload.cpu,
+            memoryUsage: payload.memory,
+            diskUsage: payload.disk,
+            networkIn: payload.network?.incoming || 0,
+            networkOut: payload.network?.outgoing || 0,
+            processCount: 0,
+            uptime: payload.uptime,
+          },
+          lastHealthCheck: new Date(),
+          services: [],
+        },
+      ],
+      connectedUser: 'system',
+      realtime: {
+        host: payload.host,
+        cpu: payload.cpu,
+        memory: payload.memory,
+        disk: payload.disk,
+        network: payload.network,
+      },
+    });
+  } catch {
+    // keep metrics endpoint available even if DB temporarily fails
+  }
+
+  return NextResponse.json(payload);
 }

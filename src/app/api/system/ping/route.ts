@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exec } from 'child_process';
+import { persistMonitoringSnapshot } from '@/lib/monitoring-db';
 
 const isSafeTarget = (value: string) => /^[a-zA-Z0-9._:-]+$/.test(value);
 
@@ -120,7 +121,7 @@ export async function GET(request: NextRequest) {
       stats = parsePingStats(stdout);
     }
 
-    return NextResponse.json({
+    const payload = {
       ok: true,
       target,
       elapsedMs: Date.now() - startedAt,
@@ -130,7 +131,27 @@ export async function GET(request: NextRequest) {
       reachable: stats.reachable,
       output: rawOutput || undefined,
       errorOutput: errorOutput || undefined,
-    });
+    };
+
+    try {
+      await persistMonitoringSnapshot({
+        pingResults: [
+          {
+            id: `ping-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            target,
+            elapsedMs: payload.elapsedMs,
+            sent: payload.sent,
+            received: payload.received,
+            avgLatencyMs: payload.avgLatencyMs,
+            reachable: payload.reachable,
+          },
+        ],
+      });
+    } catch {
+      // keep ping endpoint available even if DB temporarily fails
+    }
+
+    return NextResponse.json(payload);
   } catch (error: any) {
     return NextResponse.json(
       {

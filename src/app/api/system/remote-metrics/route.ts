@@ -5,6 +5,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import { captureSystemEvents } from '@/services/eventCapture';
+import { persistMonitoringSnapshot } from '@/lib/monitoring-db';
 
 const { MM_REMOTE_USER, MM_REMOTE_PASS } = process.env;
 
@@ -162,14 +163,43 @@ try {
       );
     }
 
-    return NextResponse.json({
+    const responsePayload = {
       ok: true,
       host: data.host || host,
       cpu: data.cpu ?? 0,
       memory: data.memory ?? 0,
       disk: data.disk ?? 0,
       uptime: data.uptime ?? 0,
-    });
+    };
+
+    try {
+      await persistMonitoringSnapshot({
+        servers: [
+          {
+            id: `remote-${host}`,
+            name: responsePayload.host,
+            ipAddress: host,
+            status: 'online',
+            healthScore: Math.round(100 - Math.max(responsePayload.cpu, responsePayload.memory, responsePayload.disk)),
+            metrics: {
+              cpuUsage: responsePayload.cpu,
+              memoryUsage: responsePayload.memory,
+              diskUsage: responsePayload.disk,
+              uptime: responsePayload.uptime,
+              networkIn: 0,
+              networkOut: 0,
+              processCount: 0,
+            },
+            lastHealthCheck: new Date(),
+            services: [],
+          },
+        ],
+      });
+    } catch {
+      // keep remote metrics endpoint available even if DB temporarily fails
+    }
+
+    return NextResponse.json(responsePayload);
   } catch (err: any) {
     captureSystemEvents.connectivityIssue(host, host, 'WinRM/DCOM', err?.message || 'Unknown error');
     const details = debug

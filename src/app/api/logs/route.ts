@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { SystemLog, LogCategory, LogLevel } from '@/types';
 import { logger } from '@/services/logger';
+import { dbQuery } from '@/lib/postgres';
 
 const IPv4_REGEX = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
 const IPv6_REGEX = /\b(?:[A-Fa-f0-9]{1,4}:){2,7}[A-Fa-f0-9]{1,4}\b/;
@@ -80,33 +81,111 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(searchParams.get('limit') || '100');
   const offset = parseInt(searchParams.get('offset') || '0');
 
-  // Use the real logger to search logs
-  const filtered = logger.searchLogs({
-    category: category as LogCategory,
-    level: level as LogLevel,
-    module,
-    username,
-    search: searchQuery,
-  });
+  try {
+    const safeLimit = Math.max(1, Math.min(500, Number.isFinite(limit) ? limit : 100));
+    const safeOffset = Math.max(0, Number.isFinite(offset) ? offset : 0);
 
-  const total = filtered.length;
-  const paginated = filtered.slice(offset, offset + limit).map((log) => {
-    if (log.ipSource) return log;
-    const inferred = extractIpFromPayload(log.objectImpacted, log.details);
-    if (!inferred) return log;
-    return {
-      ...log,
-      ipSource: inferred,
-    };
-  });
+    const where: string[] = [];
+    const values: any[] = [];
 
-  return NextResponse.json({
-    ok: true,
-    logs: paginated,
-    total,
-    page: Math.floor(offset / limit) + 1,
-    pages: Math.ceil(total / limit),
-  });
+    if (category) {
+      values.push(category);
+      where.push(`category = $${values.length}`);
+    }
+    if (level) {
+      values.push(level);
+      where.push(`level = $${values.length}`);
+    }
+    if (module) {
+      values.push(`%${module}%`);
+      where.push(`module ILIKE $${values.length}`);
+    }
+    if (username) {
+      values.push(`%${username}%`);
+      where.push(`COALESCE(username, '') ILIKE $${values.length}`);
+    }
+    if (searchQuery) {
+      values.push(`%${searchQuery}%`);
+      where.push(`(
+        action ILIKE $${values.length}
+        OR object_impacted ILIKE $${values.length}
+        OR module ILIKE $${values.length}
+      )`);
+    }
+
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const countResult = await dbQuery<{ total: number }>(
+      `SELECT COUNT(*)::int AS total FROM logs ${whereClause}`,
+      values,
+    );
+
+    const listValues = [...values, safeLimit, safeOffset];
+    const logsResult = await dbQuery(
+      `
+      SELECT id, timestamp, category, level, username, module, action, object_impacted,
+             old_value, new_value, ip_source, details
+      FROM logs
+      ${whereClause}
+      ORDER BY timestamp DESC
+      LIMIT $${listValues.length - 1}
+      OFFSET $${listValues.length}
+      `,
+      listValues,
+    );
+
+    const total = countResult.rows[0]?.total || 0;
+    const paginated = logsResult.rows.map((log: any) => ({
+      id: log.id,
+      timestamp: log.timestamp,
+      category: log.category,
+      level: log.level,
+      username: log.username,
+      module: log.module,
+      action: log.action,
+      objectImpacted: log.object_impacted,
+      oldValue: log.old_value,
+      newValue: log.new_value,
+      ipSource: log.ip_source,
+      details: log.details,
+    }));
+
+    return NextResponse.json({
+      ok: true,
+      logs: paginated,
+      total,
+      page: Math.floor(safeOffset / safeLimit) + 1,
+      pages: Math.ceil(total / safeLimit),
+    });
+  } catch {
+    const filtered = logger.searchLogs({
+      category: category as LogCategory,
+      level: level as LogLevel,
+      module,
+      username,
+      search: searchQuery,
+    });
+
+    const total = filtered.length;
+    const paginated = filtered.slice(offset, offset + limit).map((log) => {
+      if (log.ipSource) return log;
+      const inferred = extractIpFromPayload(log.objectImpacted, log.details);
+      if (!inferred) return log;
+      return {
+        ...log,
+        ipSource: inferred,
+      };
+    });
+
+    return NextResponse.json({
+      ok: true,
+      logs: paginated,
+      total,
+      page: Math.floor(offset / limit) + 1,
+      pages: Math.ceil(total / limit),
+      source: 'memory-fallback',
+    });
+  }
 }
 
 
@@ -190,12 +269,25 @@ export async function DELETE(request: NextRequest) {
 
   if (action === 'clear') {
     logger.clearLogs();
+    try {
+      await dbQuery('DELETE FROM logs');
+    } catch {
+      // keep memory clear as fallback
+    }
     return NextResponse.json({ ok: true, message: 'All logs cleared' });
   }
 
   if (action === 'purge-old') {
     const days = parseInt(searchParams.get('days') || '30');
     const removed = logger.purgeLogs(days);
+    try {
+      await dbQuery(
+        `DELETE FROM logs WHERE timestamp < NOW() - ($1::text || ' days')::interval`,
+        [String(days)],
+      );
+    } catch {
+      // keep memory purge as fallback
+    }
     return NextResponse.json({
       ok: true,
       message: `Purged ${removed} old logs (> ${days} days)`,
