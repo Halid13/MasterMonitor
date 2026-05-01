@@ -14,15 +14,60 @@ import {
 import { useDashboardStore } from '@/store/dashboard';
 import { DashboardStats } from '@/types';
 
-const generateTicketsData = () => [
-  { name: 'Lun', open: 12, inProgress: 8, closed: 15 },
-  { name: 'Mar', open: 10, inProgress: 12, closed: 18 },
-  { name: 'Mer', open: 15, inProgress: 10, closed: 12 },
-  { name: 'Jeu', open: 8, inProgress: 14, closed: 20 },
-  { name: 'Ven', open: 18, inProgress: 9, closed: 22 },
-  { name: 'Sam', open: 5, inProgress: 3, closed: 10 },
-  { name: 'Dim', open: 3, inProgress: 2, closed: 8 },
-];
+type TicketTimelineRow = {
+  status?: string;
+  createdAt?: string;
+};
+
+const toLocalDayKey = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const dayLabel = (date: Date) => date
+  .toLocaleDateString('fr-FR', { weekday: 'short' })
+  .replace('.', '')
+  .replace(/^./, (c) => c.toUpperCase());
+
+const buildTicketsDataFromApi = (rows: TicketTimelineRow[]) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const buckets = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - i));
+    return {
+      key: toLocalDayKey(date),
+      name: dayLabel(date),
+      open: 0,
+      inProgress: 0,
+      closed: 0,
+    };
+  });
+
+  const byKey = new Map(buckets.map((b) => [b.key, b]));
+
+  for (const row of rows) {
+    if (!row?.createdAt) continue;
+    const created = new Date(row.createdAt);
+    if (Number.isNaN(created.getTime())) continue;
+
+    const bucket = byKey.get(toLocalDayKey(created));
+    if (!bucket) continue;
+
+    if (row.status === 'in-progress') {
+      bucket.inProgress += 1;
+    } else if (row.status === 'resolved' || row.status === 'closed') {
+      bucket.closed += 1;
+    } else {
+      bucket.open += 1;
+    }
+  }
+
+  return buckets.map(({ key, ...rest }) => rest);
+};
 
 const buildEquipmentStatus = (operational: number, stock: number) => [
   { name: 'En service', value: operational, color: '#10b981' },
@@ -86,17 +131,32 @@ export default function Dashboard() {
       }
     };
 
-    setTicketsData(generateTicketsData());
+    const fetchTicketsTimeline = async () => {
+      try {
+        const res = await fetch('/api/tickets', { cache: 'no-store' });
+        const data = await res.json();
+        if (!isMounted || !res.ok) return;
+
+        const rows = Array.isArray(data?.tickets) ? data.tickets as TicketTimelineRow[] : [];
+        setTicketsData(buildTicketsDataFromApi(rows));
+      } catch {
+        if (isMounted) setTicketsData(buildTicketsDataFromApi([]));
+      }
+    };
+
     fetchAdUsers();
     fetchMetrics();
+    fetchTicketsTimeline();
 
     const critical = logs.filter((log) => log.level === 'critical').length;
     setCriticalLogsCount(critical);
 
     const timer = setInterval(fetchMetrics, 5000);
+    const ticketsTimer = setInterval(fetchTicketsTimeline, 30000);
     return () => {
       isMounted = false;
       clearInterval(timer);
+      clearInterval(ticketsTimer);
     };
   }, [logs]);
 

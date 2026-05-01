@@ -131,7 +131,11 @@ export default function TicketsPage() {
     const normalizedSearch = searchQuery.trim().toLowerCase();
 
     return tickets
-      .filter((ticket) => filterStatus === 'all' || ticket.status === filterStatus)
+      .filter((ticket) => {
+        if (filterStatus === 'all') return true;
+        if (filterStatus === 'done') return ticket.status === 'resolved' || ticket.status === 'closed';
+        return ticket.status === filterStatus;
+      })
       .filter((ticket) => filterCategory === 'all' || ticket.category === filterCategory)
       .filter((ticket) => {
         if (!normalizedSearch) return true;
@@ -169,88 +173,90 @@ export default function TicketsPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Tickets Helpdesk</h1>
-            <p className="text-gray-600 mt-1">
-              {openCount} ouvert{openCount !== 1 ? 's' : ''}
-              {criticalCount > 0 && (
-                <span className="ml-2 text-red-600 font-medium">· {criticalCount} critique{criticalCount !== 1 ? 's' : ''}</span>
-              )}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+      <div className="space-y-4">
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Centre Opérations</p>
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Tickets Helpdesk</h1>
+              <div className="mt-1.5 flex items-center gap-2 text-sm text-slate-500">
+                <span>{openCount} ouvert{openCount !== 1 ? 's' : ''}</span>
+                {criticalCount > 0 && (
+                  <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700">
+                    {criticalCount} critique{criticalCount !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+            </div>
+
             <button
               onClick={() => fetchTickets(true)}
               disabled={refreshing}
-              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
               Actualiser
             </button>
           </div>
-        </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-red-700">Nouveaux reçus</p>
-            <p className="mt-2 text-3xl font-bold text-red-900">{openCount}</p>
-            <p className="mt-1 text-sm text-red-700">Tickets encore ouverts</p>
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <article className="rounded-xl border border-rose-200/80 bg-rose-50/40 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-rose-700">Nouveaux reçus</p>
+              <p className="mt-1 text-2xl font-semibold text-slate-900">{openCount}</p>
+              <p className="text-xs text-slate-500">Tickets ouverts</p>
+            </article>
+            <article className="rounded-xl border border-amber-200/80 bg-amber-50/40 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">À trier</p>
+              <p className="mt-1 text-2xl font-semibold text-slate-900">{triageCount}</p>
+              <p className="text-xs text-slate-500">Sans assignation</p>
+            </article>
+            <article className="rounded-xl border border-cyan-200/80 bg-cyan-50/40 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-cyan-700">En traitement</p>
+              <p className="mt-1 text-2xl font-semibold text-slate-900">{inProgressCount}</p>
+              <p className="text-xs text-slate-500">Pris en charge</p>
+            </article>
+            <article className="rounded-xl border border-violet-200/80 bg-violet-50/40 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-700">En attente</p>
+              <p className="mt-1 text-2xl font-semibold text-slate-900">{waitingCount}</p>
+              <p className="text-xs text-slate-500">En attente d'action</p>
+            </article>
           </div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">À trier</p>
-            <p className="mt-2 text-3xl font-bold text-amber-900">{triageCount}</p>
-            <p className="mt-1 text-sm text-amber-700">Ouverts sans assignation</p>
-          </div>
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">En traitement</p>
-            <p className="mt-2 text-3xl font-bold text-blue-900">{inProgressCount}</p>
-            <p className="mt-1 text-sm text-blue-700">Pris en charge par l'équipe</p>
-          </div>
-          <div className="rounded-xl border border-purple-200 bg-purple-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">En attente</p>
-            <p className="mt-2 text-3xl font-bold text-purple-900">{waitingCount}</p>
-            <p className="mt-1 text-sm text-purple-700">Besoin d'un retour ou d'une action</p>
-          </div>
-        </div>
+        </section>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px_220px]">
-            <label className="flex items-center gap-3 rounded-lg border border-gray-300 px-3 py-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
-              <Search size={16} className="text-gray-400" />
+        <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_220px]">
+            <label className="flex items-center gap-3 rounded-xl border border-slate-300 bg-slate-50/60 px-3 py-2.5 focus-within:border-cyan-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-cyan-100">
+              <Search size={16} className="text-slate-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Rechercher par titre, description, demandeur ou assignation"
-                className="w-full border-0 bg-transparent p-0 text-sm text-gray-700 outline-none placeholder:text-gray-400"
+                placeholder="Rechercher par titre, description, demandeur"
+                className="w-full border-0 bg-transparent p-0 text-sm text-slate-700 outline-none placeholder:text-slate-400"
               />
             </label>
 
-            <label className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2">
-              <Filter size={16} className="text-gray-400" />
+            <label className="flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50/60 px-3 py-2.5">
+              <Filter size={16} className="text-slate-400" />
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full border-0 bg-transparent text-sm text-gray-700 outline-none"
+                className="w-full border-0 bg-transparent text-sm text-slate-700 outline-none"
               >
                 <option value="all">Tous les statuts</option>
                 <option value="open">Ouvert</option>
                 <option value="in-progress">En cours</option>
                 <option value="waiting">En attente</option>
-                <option value="resolved">Résolu</option>
-                <option value="closed">Fermé</option>
+                <option value="done">Résolu / Fermé</option>
               </select>
             </label>
 
-            <label className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2">
-              <CircleDot size={16} className="text-gray-400" />
+            <label className="flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50/60 px-3 py-2.5">
+              <CircleDot size={16} className="text-slate-400" />
               <select
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
-                className="w-full border-0 bg-transparent text-sm text-gray-700 outline-none"
+                className="w-full border-0 bg-transparent text-sm text-slate-700 outline-none"
               >
                 <option value="all">Toutes les catégories</option>
                 <option value="hardware">Matériel</option>
@@ -262,43 +268,41 @@ export default function TicketsPage() {
             </label>
           </div>
 
-          <div className="mt-4 flex gap-2 flex-wrap">
-            {['all', 'open', 'in-progress', 'waiting', 'resolved', 'closed'].map((s) => (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {['all', 'open', 'in-progress', 'waiting', 'done'].map((s) => (
               <button
                 key={s}
                 onClick={() => setFilterStatus(s)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`rounded-xl px-3 py-1.5 text-sm font-medium transition ${
                   filterStatus === s
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-cyan-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
-                {s === 'all' ? 'Tous' : STATUS_LABELS[s] || s}
+                {s === 'all' ? 'Tous' : s === 'done' ? 'Résolu / Fermé' : STATUS_LABELS[s] || s}
                 {s === 'open' && openCount > 0 && (
-                  <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">
+                  <span className="ml-1.5 rounded-full bg-rose-500 px-1.5 py-0.5 text-xs text-white">
                     {openCount}
                   </span>
                 )}
               </button>
             ))}
           </div>
-        </div>
+        </section>
 
         {/* Modal */}
         {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl">
-              <h2 className="text-xl font-bold mb-5">
-                Mettre à jour le traitement
-              </h2>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/15 backdrop-blur-sm p-4">
+            <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+              <h2 className="mb-5 text-xl font-semibold text-slate-900">Mettre à jour le traitement</h2>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Statut</label>
                     <select
                       value={formData.status}
                       onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-cyan-400 focus:bg-white focus:ring-2 focus:ring-cyan-100"
                     >
                       <option value="open">Ouvert</option>
                       <option value="in-progress">En cours</option>
@@ -308,13 +312,13 @@ export default function TicketsPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Assigné à</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Assigné à</label>
                     <input
                       type="text"
                       value={formData.assignedTo}
                       onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
                       placeholder="Nom du technicien"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-cyan-400 focus:bg-white focus:ring-2 focus:ring-cyan-100"
                     />
                   </div>
                 </div>
@@ -322,14 +326,14 @@ export default function TicketsPage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50"
+                    className="flex-1 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-700 disabled:opacity-50"
                   >
                     {saving ? 'Enregistrement...' : 'Mettre à jour'}
                   </button>
                   <button
                     type="button"
                     onClick={() => { setShowModal(false); setEditingId(null); setFormData(defaultForm); }}
-                    className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                    className="flex-1 rounded-xl bg-slate-100 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-200"
                   >
                     Annuler
                   </button>
@@ -341,12 +345,12 @@ export default function TicketsPage() {
 
         {/* Détail ticket */}
         {showDetails && selectedTicket && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
-            <div className="bg-white rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-xl">
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/15 backdrop-blur-sm p-4">
+            <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Détail du ticket</h2>
-                  <p className="text-sm text-gray-500 mt-1">{selectedTicket.id}</p>
+                  <h2 className="text-xl font-semibold text-slate-900">Détail du ticket</h2>
+                  <p className="mt-1 text-sm text-slate-500">{selectedTicket.id}</p>
                 </div>
                 <button
                   type="button"
@@ -354,7 +358,7 @@ export default function TicketsPage() {
                     openEdit(selectedTicket);
                     setShowDetails(false);
                   }}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-700"
                 >
                   <Edit2 size={14} />
                   Modifier traitement
@@ -363,51 +367,51 @@ export default function TicketsPage() {
 
               <div className="mt-6 space-y-5">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Titre</p>
-                  <p className="mt-1 text-sm font-medium text-gray-900">{selectedTicket.title}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Titre</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{selectedTicket.title}</p>
                 </div>
 
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Description</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Description</p>
+                  <p className="mt-1 whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                     {selectedTicket.description || 'Aucune description fournie'}
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Demandeur</p>
-                    <p className="mt-1 text-sm text-gray-800">{selectedTicket.createdBy || '—'}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Demandeur</p>
+                    <p className="mt-1 text-sm text-slate-800">{selectedTicket.createdBy || '—'}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Assigné à</p>
-                    <p className="mt-1 text-sm text-gray-800">{selectedTicket.assignedTo || 'Non assigné'}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Assigné à</p>
+                    <p className="mt-1 text-sm text-slate-800">{selectedTicket.assignedTo || 'Non assigné'}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Catégorie</p>
-                    <p className="mt-1 text-sm text-gray-800">{CATEGORY_LABELS[selectedTicket.category] || selectedTicket.category}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catégorie</p>
+                    <p className="mt-1 text-sm text-slate-800">{CATEGORY_LABELS[selectedTicket.category] || selectedTicket.category}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Priorité</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Priorité</p>
                     <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getPriorityColor(selectedTicket.priority)}`}>
                       {PRIORITY_LABELS[selectedTicket.priority] || selectedTicket.priority}
                     </span>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Statut</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Statut</p>
                     <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getStatusColor(selectedTicket.status)}`}>
                       {STATUS_LABELS[selectedTicket.status] || selectedTicket.status}
                     </span>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Créé le</p>
-                    <p className="mt-1 text-sm text-gray-800">{new Date(selectedTicket.createdAt).toLocaleString('fr-FR')}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Créé le</p>
+                    <p className="mt-1 text-sm text-slate-800">{new Date(selectedTicket.createdAt).toLocaleString('fr-FR')}</p>
                   </div>
                 </div>
 
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Dernière mise à jour</p>
-                  <p className="mt-1 text-sm text-gray-800">{new Date(selectedTicket.updatedAt).toLocaleString('fr-FR')}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dernière mise à jour</p>
+                  <p className="mt-1 text-sm text-slate-800">{new Date(selectedTicket.updatedAt).toLocaleString('fr-FR')}</p>
                 </div>
               </div>
 
@@ -418,7 +422,7 @@ export default function TicketsPage() {
                     setShowDetails(false);
                     setSelectedTicket(null);
                   }}
-                  className="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
+                  className="rounded-xl bg-slate-100 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-200"
                 >
                   Fermer
                 </button>
@@ -428,40 +432,38 @@ export default function TicketsPage() {
         )}
 
         {/* Table */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-gray-400">
+            <div className="flex items-center justify-center py-16 text-slate-400">
               <RefreshCw size={20} className="animate-spin mr-2" />
               Chargement des tickets...
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="border-b border-slate-200 bg-slate-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Ticket</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Priorité</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Statut</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Assigné à</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date de réception</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Ticket</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Priorité</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Statut</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Catégorie</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Assigné à</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Date de réception</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-slate-100">
                   {filtered.map((ticket) => (
                     <tr
                       key={ticket.id}
                       onClick={() => openDetails(ticket)}
-                      className="cursor-pointer hover:bg-blue-50 transition-colors"
+                      className="cursor-pointer transition hover:bg-cyan-50/70"
                     >
                       <td className="px-4 py-3">
                         <div className="max-w-md">
-                          <div className="text-sm font-medium text-gray-900">{ticket.title}</div>
-                          <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
-                            <User size={12} className="text-gray-400" />
+                          <div className="text-sm font-medium text-slate-900">{ticket.title}</div>
+                          <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                            <User size={12} className="text-slate-400" />
                             <span className="truncate max-w-[200px]">{ticket.createdBy || '—'}</span>
-                            <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">
-                              {CATEGORY_LABELS[ticket.category] || ticket.category}
-                            </span>
                           </div>
                         </div>
                       </td>
@@ -475,12 +477,15 @@ export default function TicketsPage() {
                           {STATUS_LABELS[ticket.status] || ticket.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {ticket.assignedTo || <span className="text-amber-600 font-medium">Non assigné</span>}
+                      <td className="px-4 py-3 text-sm text-slate-600">
+                        {CATEGORY_LABELS[ticket.category] || ticket.category}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                          <Clock3 size={12} className="text-gray-400" />
+                      <td className="px-4 py-3 text-sm text-slate-600">
+                        {ticket.assignedTo || <span className="font-medium text-amber-600">Non assigné</span>}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-500">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <Clock3 size={12} className="text-slate-400" />
                           {new Date(ticket.createdAt).toLocaleDateString('fr-FR')}
                         </div>
                       </td>
@@ -489,7 +494,7 @@ export default function TicketsPage() {
                 </tbody>
               </table>
               {filtered.length === 0 && (
-                <div className="text-center py-12 text-gray-400">
+                <div className="py-12 text-center text-slate-400">
                   <ExternalLink size={32} className="mx-auto mb-3 opacity-30" />
                   <p className="text-sm">Aucun ticket ne correspond aux filtres actuels</p>
                   <p className="text-xs mt-1">Les tickets soumis via le portail helpdesk apparaissent ici automatiquement et peuvent ensuite être triés, assignés puis clôturés.</p>
