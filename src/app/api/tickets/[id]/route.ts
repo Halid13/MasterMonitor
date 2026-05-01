@@ -4,9 +4,10 @@ import { dbQuery } from '@/lib/postgres';
 // PATCH /api/tickets/[id] - mettre à jour un ticket
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params;
     const { id } = params;
     const body = await request.json();
     const { status, assignedTo, title, description, priority, category } = body;
@@ -44,9 +45,10 @@ export async function PATCH(
 // DELETE /api/tickets/[id] - supprimer un ticket
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params;
     await dbQuery('DELETE FROM tickets WHERE id = $1', [params.id]);
     return NextResponse.json({ success: true });
   } catch (error) {
