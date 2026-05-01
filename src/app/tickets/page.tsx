@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import MainLayout from '@/components/MainLayout';
 import { Ticket } from '@/types';
-import { Edit2, RefreshCw, CheckCircle, ExternalLink, User, Search, Filter, Clock3, CircleDot } from 'lucide-react';
+import { Edit2, RefreshCw, ExternalLink, User, Search, Filter, Clock3, CircleDot } from 'lucide-react';
 
 const PRIORITY_LABELS: Record<string, string> = {
   low: 'Faible', medium: 'Moyen', high: 'Élevé', critical: 'Critique',
@@ -66,7 +66,8 @@ export default function TicketsPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [busyTicketId, setBusyTicketId] = useState<string | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
 
   const fetchTickets = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -87,23 +88,6 @@ export default function TicketsPage() {
     fetchTickets();
     const interval = setInterval(() => fetchTickets(true), 30_000);
     return () => clearInterval(interval);
-  }, [fetchTickets]);
-
-  const updateTicket = useCallback(async (id: string, updates: Partial<TicketForm>) => {
-    setBusyTicketId(id);
-    try {
-      const res = await fetch(`/api/tickets/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-
-      if (res.ok) {
-        await fetchTickets(true);
-      }
-    } finally {
-      setBusyTicketId(null);
-    }
   }, [fetchTickets]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -129,10 +113,6 @@ export default function TicketsPage() {
     }
   };
 
-  const handleClose = async (id: string) => {
-    await updateTicket(id, { status: 'closed' });
-  };
-
   const openEdit = (ticket: Ticket) => {
     setEditingId(ticket.id);
     setFormData({
@@ -140,6 +120,11 @@ export default function TicketsPage() {
       assignedTo: ticket.assignedTo || '',
     });
     setShowModal(true);
+  };
+
+  const openDetails = (ticket: Ticket) => {
+    setSelectedTicket(ticket);
+    setShowDetails(true);
   };
 
   const filtered = useMemo(() => {
@@ -354,6 +339,94 @@ export default function TicketsPage() {
           </div>
         )}
 
+        {/* Détail ticket */}
+        {showDetails && selectedTicket && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
+            <div className="bg-white rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Détail du ticket</h2>
+                  <p className="text-sm text-gray-500 mt-1">{selectedTicket.id}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    openEdit(selectedTicket);
+                    setShowDetails(false);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  <Edit2 size={14} />
+                  Modifier traitement
+                </button>
+              </div>
+
+              <div className="mt-6 space-y-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Titre</p>
+                  <p className="mt-1 text-sm font-medium text-gray-900">{selectedTicket.title}</p>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Description</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
+                    {selectedTicket.description || 'Aucune description fournie'}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Demandeur</p>
+                    <p className="mt-1 text-sm text-gray-800">{selectedTicket.createdBy || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Assigné à</p>
+                    <p className="mt-1 text-sm text-gray-800">{selectedTicket.assignedTo || 'Non assigné'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Catégorie</p>
+                    <p className="mt-1 text-sm text-gray-800">{CATEGORY_LABELS[selectedTicket.category] || selectedTicket.category}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Priorité</p>
+                    <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getPriorityColor(selectedTicket.priority)}`}>
+                      {PRIORITY_LABELS[selectedTicket.priority] || selectedTicket.priority}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Statut</p>
+                    <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getStatusColor(selectedTicket.status)}`}>
+                      {STATUS_LABELS[selectedTicket.status] || selectedTicket.status}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Créé le</p>
+                    <p className="mt-1 text-sm text-gray-800">{new Date(selectedTicket.createdAt).toLocaleString('fr-FR')}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Dernière mise à jour</p>
+                  <p className="mt-1 text-sm text-gray-800">{new Date(selectedTicket.updatedAt).toLocaleString('fr-FR')}</p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDetails(false);
+                    setSelectedTicket(null);
+                  }}
+                  className="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           {loading ? (
@@ -363,95 +436,55 @@ export default function TicketsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
+              <div className="border-b border-gray-100 bg-gray-50 px-4 py-2 text-xs text-gray-500">
+                Cliquez sur un ticket pour voir tous les détails.
+              </div>
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Ticket reçu</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Demandeur</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Pilotage</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Dates</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Ticket</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Priorité</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Statut</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Assigné à</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Mis à jour</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filtered.map((ticket) => (
-                    <tr key={ticket.id} className="hover:bg-gray-50 transition-colors">
+                    <tr
+                      key={ticket.id}
+                      onClick={() => openDetails(ticket)}
+                      className="cursor-pointer hover:bg-blue-50 transition-colors"
+                    >
                       <td className="px-4 py-3">
                         <div className="max-w-md">
                           <div className="text-sm font-medium text-gray-900">{ticket.title}</div>
-                          <div className="mt-1 line-clamp-2 text-xs text-gray-500">{ticket.description || 'Aucune description fournie'}</div>
+                          <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
+                            <User size={12} className="text-gray-400" />
+                            <span className="truncate max-w-[200px]">{ticket.createdBy || '—'}</span>
+                            <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">
+                              {CATEGORY_LABELS[ticket.category] || ticket.category}
+                            </span>
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                          <User size={12} className="text-gray-400" />
-                          <span className="max-w-[140px] truncate font-medium">{ticket.createdBy || '—'}</span>
-                        </div>
-                        <div className="mt-2 inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600">
-                          {CATEGORY_LABELS[ticket.category] || ticket.category}
-                        </div>
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getPriorityColor(ticket.priority)}`}>
+                          {PRIORITY_LABELS[ticket.priority] || ticket.priority}
+                        </span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getPriorityColor(ticket.priority)}`}>
-                            {PRIORITY_LABELS[ticket.priority] || ticket.priority}
-                          </span>
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(ticket.status)}`}>
-                            {STATUS_LABELS[ticket.status] || ticket.status}
-                          </span>
-                        </div>
-                        <div className="mt-2 text-xs text-gray-500">
-                          {ticket.assignedTo ? (
-                            <span>Assigné à <span className="font-medium text-gray-700">{ticket.assignedTo}</span></span>
-                          ) : (
-                            <span className="text-amber-600 font-medium">Non assigné</span>
-                          )}
-                        </div>
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(ticket.status)}`}>
+                          {STATUS_LABELS[ticket.status] || ticket.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {ticket.assignedTo || <span className="text-amber-600 font-medium">Non assigné</span>}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500">
                         <div className="flex items-center gap-1.5 text-xs text-gray-500">
                           <Clock3 size={12} className="text-gray-400" />
-                          Créé le {new Date(ticket.createdAt).toLocaleDateString('fr-FR')}
-                        </div>
-                        <div className="mt-1 text-xs text-gray-400">
-                          Mis à jour le {new Date(ticket.updatedAt).toLocaleDateString('fr-FR')}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {ticket.status === 'open' && (
-                            <button
-                              onClick={() => updateTicket(ticket.id, { status: 'in-progress' })}
-                              disabled={busyTicketId === ticket.id}
-                              className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-                            >
-                              Prendre en charge
-                            </button>
-                          )}
-                          {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
-                            <button
-                              onClick={() => updateTicket(ticket.id, { status: 'resolved' })}
-                              disabled={busyTicketId === ticket.id}
-                              className="rounded-lg bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100 disabled:opacity-50"
-                            >
-                              Résoudre
-                            </button>
-                          )}
-                          <button
-                            onClick={() => openEdit(ticket)}
-                            title="Modifier"
-                            className="text-blue-600 hover:text-blue-800 transition-colors"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleClose(ticket.id)}
-                            disabled={ticket.status === 'closed' || busyTicketId === ticket.id}
-                            title="Fermer le ticket"
-                            className={ticket.status === 'closed' ? 'text-gray-300 cursor-not-allowed' : 'text-green-600 hover:text-green-800 transition-colors'}
-                          >
-                            <CheckCircle size={16} />
-                          </button>
+                          {new Date(ticket.updatedAt).toLocaleDateString('fr-FR')}
                         </div>
                       </td>
                     </tr>
