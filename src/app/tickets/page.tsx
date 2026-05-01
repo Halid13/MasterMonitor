@@ -436,9 +436,6 @@ export default function TicketsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <div className="border-b border-gray-100 bg-gray-50 px-4 py-2 text-xs text-gray-500">
-                Cliquez sur un ticket pour voir tous les détails.
-              </div>
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -446,7 +443,7 @@ export default function TicketsPage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Priorité</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Statut</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Assigné à</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Mis à jour</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date de réception</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -484,7 +481,7 @@ export default function TicketsPage() {
                       <td className="px-4 py-3 text-sm text-gray-500">
                         <div className="flex items-center gap-1.5 text-xs text-gray-500">
                           <Clock3 size={12} className="text-gray-400" />
-                          {new Date(ticket.updatedAt).toLocaleDateString('fr-FR')}
+                          {new Date(ticket.createdAt).toLocaleDateString('fr-FR')}
                         </div>
                       </td>
                     </tr>
