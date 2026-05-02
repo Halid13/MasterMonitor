@@ -1,6 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbQuery } from '@/lib/postgres';
 
+type TicketStatus = 'open' | 'in-progress' | 'waiting' | 'resolved' | 'closed';
+
+const normalizeStatus = (value: unknown): TicketStatus | null => {
+  const raw = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const compact = raw.replace(/[\s_\-/]+/g, '');
+
+  if (compact.includes('open') || compact.includes('ouvert')) return 'open';
+  if (compact.includes('inprogress') || compact.includes('encours')) return 'in-progress';
+  if (compact.includes('waiting') || compact.includes('pending') || compact.includes('enattente')) return 'waiting';
+  if (compact.includes('resolu') || compact.includes('resolue') || compact.includes('resolved')) return 'resolved';
+  if (compact.includes('closed') || compact.includes('ferme') || compact.includes('fermee')) return 'closed';
+
+  return null;
+};
+
 // GET /api/tickets - liste tous les tickets depuis la base de données
 export async function GET() {
   try {
@@ -20,19 +40,21 @@ export async function GET() {
          created_at DESC`
     );
 
-    const tickets = result.rows.map((row) => ({
+    const tickets = result.rows.map((row) => {
+      const mappedStatus = normalizeStatus(row.status);
+      return {
       id: row.id,
       title: row.title,
       description: row.description,
       priority: row.priority,
-      status: row.status,
+      status: mappedStatus ?? row.status,
       category: row.category,
       createdBy: row.created_by,
       assignedTo: row.assigned_to,
       comments: Array.isArray(row.comments) ? row.comments : [],
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-    }));
+    }});
 
     return NextResponse.json({ tickets });
   } catch (error) {

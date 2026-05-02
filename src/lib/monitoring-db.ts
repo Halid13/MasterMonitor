@@ -175,6 +175,7 @@ const upsertServer = async (client: PoolClient, server: AnyObject) => {
 
 const upsertTicket = async (client: PoolClient, ticket: AnyObject) => {
   const existing = await client.query<{ status: string }>('SELECT status FROM tickets WHERE id = $1', [normalizeText(ticket.id)]);
+  const incomingStatus = normalizeText(ticket.status) || null;
 
   await client.query(
     `
@@ -182,14 +183,14 @@ const upsertTicket = async (client: PoolClient, ticket: AnyObject) => {
       id, title, description, priority, status, category,
       created_by, assigned_to, comments, updated_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,
+      $1,$2,$3,$4,COALESCE($5, 'open'),$6,
       $7,$8,$9::jsonb,NOW()
     )
     ON CONFLICT (id) DO UPDATE SET
       title = EXCLUDED.title,
       description = EXCLUDED.description,
       priority = EXCLUDED.priority,
-      status = EXCLUDED.status,
+      status = COALESCE($5, tickets.status),
       category = EXCLUDED.category,
       created_by = EXCLUDED.created_by,
       assigned_to = EXCLUDED.assigned_to,
@@ -201,7 +202,7 @@ const upsertTicket = async (client: PoolClient, ticket: AnyObject) => {
       normalizeText(ticket.title),
       normalizeText(ticket.description) || null,
       normalizeText(ticket.priority, 'medium'),
-      normalizeText(ticket.status, 'open'),
+      incomingStatus,
       normalizeText(ticket.category, 'other'),
       normalizeText(ticket.createdBy, 'system'),
       normalizeText(ticket.assignedTo) || null,
@@ -210,8 +211,8 @@ const upsertTicket = async (client: PoolClient, ticket: AnyObject) => {
   );
 
   const oldStatus = existing.rows[0]?.status;
-  const newStatus = normalizeText(ticket.status, 'open');
-  if (oldStatus && oldStatus !== newStatus) {
+  const newStatus = incomingStatus ?? oldStatus ?? 'open';
+  if (oldStatus && incomingStatus && oldStatus !== newStatus) {
     await client.query(
       `
       INSERT INTO ticket_status_history (id, ticket_id, old_status, new_status, changed_by, changed_at)

@@ -30,6 +30,23 @@ type TicketForm = {
   assignedTo: string;
 };
 
+const normalizeStatus = (value: unknown): Ticket['status'] | null => {
+  const raw = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const compact = raw.replace(/[\s_\-/]+/g, '');
+
+  if (compact.includes('open') || compact.includes('ouvert')) return 'open';
+  if (compact.includes('inprogress') || compact.includes('encours')) return 'in-progress';
+  if (compact.includes('waiting') || compact.includes('pending') || compact.includes('enattente')) return 'waiting';
+  if (compact.includes('resolu') || compact.includes('resolue') || compact.includes('resolved')) return 'resolved';
+  if (compact.includes('closed') || compact.includes('ferme') || compact.includes('fermee')) return 'closed';
+  return null;
+};
+
 const defaultForm: TicketForm = {
   status: 'open', assignedTo: '',
 };
@@ -73,9 +90,18 @@ export default function TicketsPage() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const res = await fetch('/api/tickets');
+      const res = await fetch('/api/tickets', { cache: 'no-store' });
       const data = await res.json();
-      if (res.ok) setTickets(data.tickets || []);
+      if (res.ok) {
+        const normalized = (data.tickets || []).map((ticket: Ticket) => {
+          const mappedStatus = normalizeStatus(ticket.status);
+          return {
+            ...ticket,
+            status: mappedStatus ?? ticket.status,
+          };
+        });
+        setTickets(normalized);
+      }
     } catch {
       // ignore
     } finally {
@@ -95,19 +121,37 @@ export default function TicketsPage() {
     if (!editingId) return;
     setSaving(true);
     try {
-      await fetch(`/api/tickets/${editingId}`, {
+      const response = await fetch(`/api/tickets/${editingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          status: formData.status,
+          status: normalizeStatus(formData.status) ?? formData.status,
           assignedTo: formData.assignedTo || null,
         }),
       });
 
-      await fetchTickets(true);
+      if (!response.ok) {
+        throw new Error('La mise a jour du ticket a echoue');
+      }
+
+      // Optimistic immediate update
+      const now = new Date();
+      const newStatus = (normalizeStatus(formData.status) ?? formData.status) as Ticket['status'];
+      const newAssignedTo = formData.assignedTo || undefined;
+      setTickets(prev => prev.map(t =>
+        t.id === editingId
+          ? { ...t, status: newStatus, assignedTo: newAssignedTo, updatedAt: now }
+          : t
+      ));
+      setSelectedTicket(prev => prev?.id === editingId
+        ? { ...prev, status: newStatus, assignedTo: newAssignedTo, updatedAt: now }
+        : prev
+      );
+
       setShowModal(false);
       setEditingId(null);
       setFormData(defaultForm);
+      await fetchTickets(true);
     } finally {
       setSaving(false);
     }
@@ -116,7 +160,7 @@ export default function TicketsPage() {
   const openEdit = (ticket: Ticket) => {
     setEditingId(ticket.id);
     setFormData({
-      status: ticket.status,
+      status: (normalizeStatus(ticket.status) ?? ticket.status) as Ticket['status'],
       assignedTo: ticket.assignedTo || '',
     });
     setShowModal(true);

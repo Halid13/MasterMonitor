@@ -170,7 +170,6 @@ export const MainLayout = ({ children }: LayoutProps) => {
 
         if (mode === 'realtime') {
           payload.servers = current.servers;
-          payload.tickets = current.tickets;
           payload.alerts = current.alerts;
           payload.ipAddresses = current.ipAddresses;
         }
@@ -185,7 +184,6 @@ export const MainLayout = ({ children }: LayoutProps) => {
           payload.users = current.users;
           payload.equipment = current.equipment;
           payload.servers = current.servers;
-          payload.tickets = current.tickets;
           payload.subnets = current.subnets;
         }
 
