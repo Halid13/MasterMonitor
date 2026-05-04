@@ -8,6 +8,7 @@ import { captureSystemEvents } from '@/services/eventCapture';
 import { persistMonitoringSnapshot } from '@/lib/monitoring-db';
 
 const { MM_REMOTE_USER, MM_REMOTE_PASS } = process.env;
+const REMOTE_METRICS_TIMEOUT_MS = 20_000;
 
 const isSafeHost = (value: string) => /^[a-zA-Z0-9._:-]+$/.test(value);
 
@@ -21,7 +22,7 @@ const runPowerShell = (command: string) =>
       writeFileSync(tmpFile, command, 'utf8');
       exec(
         `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`,
-        { maxBuffer: 1024 * 1024, encoding: 'utf8' },
+        { maxBuffer: 1024 * 1024, encoding: 'utf8', timeout: REMOTE_METRICS_TIMEOUT_MS },
         (err, stdout, stderr) => {
           try {
             unlinkSync(tmpFile);
@@ -75,6 +76,12 @@ $collect = {
   $memUsedPct = if ($memTotal -gt 0) { (($memTotal - $memFree) / $memTotal) * 100 } else { 0 }
   $diskPct = if ($disk.Size -gt 0) { (($disk.Size - $disk.FreeSpace) / $disk.Size) * 100 } else { 0 }
   $uptimeSec = (New-TimeSpan -Start $os.LastBootUpTime -End (Get-Date)).TotalSeconds
+  $netCfg = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" | Select-Object -First 1
+  $subnetMask = if ($netCfg -and $netCfg.IPSubnet) { $netCfg.IPSubnet[0] } else { $null }
+  $stoppedSvcs = @(try {
+    Get-CimInstance Win32_Service -Filter "StartMode='Auto' AND State='Stopped'" -ErrorAction SilentlyContinue |
+    Select-Object -First 6 -ExpandProperty Name
+  } catch { })
 
   [PSCustomObject]@{
     ok = $true
@@ -83,6 +90,12 @@ $collect = {
     memory = [Math]::Round($memUsedPct, 2)
     disk = [Math]::Round($diskPct, 2)
     uptime = [int]$uptimeSec
+    subnetMask = $subnetMask
+    diskTotal = $disk.Size
+    diskFree = $disk.FreeSpace
+    memTotal = $memTotal
+    memFree = $memFree
+    stoppedServices = @($stoppedSvcs)
   }
 }
 
@@ -118,6 +131,12 @@ try {
     $memUsedPct = if ($memTotal -gt 0) { (($memTotal - $memFree) / $memTotal) * 100 } else { 0 }
     $diskPct = if ($disk.Size -gt 0) { (($disk.Size - $disk.FreeSpace) / $disk.Size) * 100 } else { 0 }
     $uptimeSec = (New-TimeSpan -Start $os.LastBootUpTime -End (Get-Date)).TotalSeconds
+    $netCfg2 = Get-CimInstance Win32_NetworkAdapterConfiguration -CimSession $cim -Filter "IPEnabled=True" | Select-Object -First 1
+    $subnetMask2 = if ($netCfg2 -and $netCfg2.IPSubnet) { $netCfg2.IPSubnet[0] } else { $null }
+    $stoppedSvcs2 = @(try {
+      Get-CimInstance Win32_Service -CimSession $cim -Filter "StartMode='Auto' AND State='Stopped'" -ErrorAction SilentlyContinue |
+      Select-Object -First 6 -ExpandProperty Name
+    } catch { })
 
     [PSCustomObject]@{
       ok = $true
@@ -126,6 +145,12 @@ try {
       memory = [Math]::Round($memUsedPct, 2)
       disk = [Math]::Round($diskPct, 2)
       uptime = [int]$uptimeSec
+      subnetMask = $subnetMask2
+      diskTotal = $disk.Size
+      diskFree = $disk.FreeSpace
+      memTotal = $memTotal
+      memFree = $memFree
+      stoppedServices = @($stoppedSvcs2)
     } | ConvertTo-Json -Compress | Write-Output
   } finally {
     if ($cim) {
@@ -163,6 +188,13 @@ try {
       );
     }
 
+    const rawStopped = data.stoppedServices;
+    const stoppedServices: string[] = Array.isArray(rawStopped)
+      ? rawStopped.filter(Boolean)
+      : rawStopped
+        ? [String(rawStopped)]
+        : [];
+
     const responsePayload = {
       ok: true,
       host: data.host || host,
@@ -170,6 +202,12 @@ try {
       memory: data.memory ?? 0,
       disk: data.disk ?? 0,
       uptime: data.uptime ?? 0,
+      subnetMask: data.subnetMask ?? null,
+      diskTotal: data.diskTotal ?? null,
+      diskFree: data.diskFree ?? null,
+      memTotal: data.memTotal ?? null,
+      memFree: data.memFree ?? null,
+      stoppedServices,
     };
 
     try {
@@ -201,15 +239,23 @@ try {
 
     return NextResponse.json(responsePayload);
   } catch (err: any) {
-    captureSystemEvents.connectivityIssue(host, host, 'WinRM/DCOM', err?.message || 'Unknown error');
+    const rootErr = err?.err || err;
+    const message = rootErr?.message || err?.message || 'Unknown error';
+    const isTimeout = Boolean(rootErr?.killed) || /timed out|ETIMEDOUT/i.test(String(message));
+    captureSystemEvents.connectivityIssue(host, host, 'WinRM/DCOM', message);
     const details = debug
       ? {
-          message: err?.message || 'Erreur inconnue',
+          message: message || 'Erreur inconnue',
           stderr: err?.stderr || null,
           stdout: err?.stdout || null,
+          timeoutMs: REMOTE_METRICS_TIMEOUT_MS,
+          isTimeout,
         }
       : 'Aucun détail.';
 
-    return NextResponse.json({ ok: false, error: 'Erreur de récupération distante.', details }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: isTimeout ? 'Timeout de récupération distante.' : 'Erreur de récupération distante.', details },
+      { status: 500 },
+    );
   }
 }

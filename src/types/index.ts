@@ -80,10 +80,15 @@ export interface ServerStatus {
   name: string;
   ipAddress: string;
   status: 'online' | 'offline' | 'warning';
+    subnetMask?: string;
   healthScore: number;
   metrics: ServerMetrics;
   lastHealthCheck: Date;
   services: ServiceStatus[];
+    diskTotal?: number;
+    diskFree?: number;
+    memTotal?: number;
+    memFree?: number;
 }
 
 export interface ServiceStatus {

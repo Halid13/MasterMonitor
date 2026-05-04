@@ -18,6 +18,7 @@ type SnapshotPayload = {
   dynamic?: AnyObject;
   staticData?: AnyObject;
   deletedEquipmentIds?: string[];
+  deletedServers?: Array<{ id?: string; ipAddress?: string; ip?: string }>;
 };
 
 const asDate = (value: unknown) => {
@@ -380,8 +381,28 @@ export const persistMonitoringSnapshot = async (payload: SnapshotPayload) => {
       ? payload.deletedEquipmentIds.map((id) => String(id || '').trim()).filter(Boolean)
       : [];
 
+    const deletedServerIds = Array.isArray(payload.deletedServers)
+      ? payload.deletedServers
+          .map((server) => normalizeText(server?.id))
+          .filter(Boolean)
+      : [];
+
+    const deletedServerIps = Array.isArray(payload.deletedServers)
+      ? payload.deletedServers
+          .map((server) => normalizeText(server?.ipAddress || server?.ip).toLowerCase())
+          .filter(Boolean)
+      : [];
+
     if (deletedEquipmentIds.length > 0) {
       await client.query('DELETE FROM equipment WHERE id = ANY($1::text[])', [deletedEquipmentIds]);
+    }
+
+    if (deletedServerIds.length > 0) {
+      await client.query('DELETE FROM servers WHERE id = ANY($1::text[])', [deletedServerIds]);
+    }
+
+    if (deletedServerIps.length > 0) {
+      await client.query('DELETE FROM servers WHERE LOWER(ip_address) = ANY($1::text[])', [deletedServerIps]);
     }
 
     for (const user of payload.users || []) await upsertUser(client, user);

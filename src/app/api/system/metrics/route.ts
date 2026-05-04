@@ -5,6 +5,47 @@ import { captureSystemEvents } from '@/services/eventCapture';
 import { logger } from '@/services/logger';
 import { persistMonitoringSnapshot } from '@/lib/monitoring-db';
 
+// ─── Key-services cache (refreshed every 30 s to avoid latency on 5 s poll) ──
+let _svcCacheTs = 0;
+let _svcCache: Array<{ name: string; status: 'running' | 'stopped' }> = [];
+
+const getKeyServicesLocal = (): Promise<Array<{ name: string; status: 'running' | 'stopped' }>> => {
+  const now = Date.now();
+  if (now - _svcCacheTs < 30_000) return Promise.resolve(_svcCache);
+  if (process.platform !== 'win32') {
+    _svcCacheTs = now;
+    _svcCache = [];
+    return Promise.resolve([]);
+  }
+  const KEY = ['Spooler', 'WinRM', 'W32Time', 'LanmanServer', 'LanmanWorkstation', 'BITS'];
+  const filter = KEY.map((n) => `Name='${n}'`).join(' or ');
+  return new Promise((resolve) => {
+    exec(
+      `wmic service where "(${filter})" get Name,State /value`,
+      { timeout: 8000 },
+      (err, stdout) => {
+        const services: Array<{ name: string; status: 'running' | 'stopped' }> = [];
+        if (!err && stdout) {
+          const blocks = stdout.split(/\r?\n\r?\n/).filter((b) => b.trim());
+          for (const block of blocks) {
+            const nm = block.match(/^Name=(.+)/im);
+            const st = block.match(/^State=(.+)/im);
+            if (nm && st) {
+              services.push({
+                name: nm[1].trim(),
+                status: st[1].trim().toLowerCase() === 'running' ? 'running' : 'stopped',
+              });
+            }
+          }
+        }
+        _svcCacheTs = now;
+        _svcCache = services;
+        resolve(services);
+      },
+    );
+  });
+};
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const cpuSnapshot = () => os.cpus().map((cpu) => cpu.times);
@@ -206,6 +247,7 @@ export async function GET() {
 
   const disk = process.platform === 'win32' ? await getDiskUsageWindows('C') : null;
   const network = await getNetworkRate();
+    const services = await getKeyServicesLocal();
   const primaryNetwork = getPrimaryNetwork();
   const serverName = os.hostname();
   const serverId = 'local-pc';
@@ -234,6 +276,9 @@ export async function GET() {
     interface: primaryNetwork.name,
     diskDetail: disk,
     network,
+      memTotal: totalMem,
+      memFree: freeMem,
+      services,
   };
 
   try {
@@ -255,7 +300,7 @@ export async function GET() {
             uptime: payload.uptime,
           },
           lastHealthCheck: new Date(),
-          services: [],
+            services: services.map((s, i) => ({ id: `svc-local-${i}`, name: s.name, status: s.status })),
         },
       ],
       connectedUser: 'system',
