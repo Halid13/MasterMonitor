@@ -209,30 +209,35 @@ export default function ServersPage() {
             }
             try {
               const host = encodeURIComponent(server.ipAddress);
-              const res = await fetch(`/api/system/remote-metrics?host=${host}`, { cache: 'no-store', signal: controller.signal });
-              const data = await res.json();
+              const [pingOk, remoteResult] = await Promise.all([
+                pingReachable(server.ipAddress),
+                fetch(`/api/system/remote-metrics?host=${host}`, { cache: 'no-store', signal: controller.signal })
+                  .then((res) => res.json())
+                  .then((data) => ({ ok: Boolean(data?.ok), data }))
+                  .catch(() => ({ ok: false as const, data: null as any })),
+              ]);
+
+              const data = remoteResult.data;
+              const metricsOk = remoteResult.ok;
               const av = availRef.current;
               if (!av[server.id]) av[server.id] = { checks: 0, online: 0 };
               av[server.id].checks++;
-              if (!isMounted || controller.signal.aborted || !data?.ok) {
+              if (!isMounted || controller.signal.aborted) return;
+
+              // Server is ONLINE only if both checks are valid: Ping + WinRM/CIM metrics.
+              if (!pingOk || !metricsOk) {
                 if (isMounted && !controller.signal.aborted) {
-                  const reachable = await pingReachable(server.ipAddress);
-                  if (reachable) {
-                    av[server.id].online++;
-                    updateServerStatus(server.id, { status: 'online' });
-                    setErrorDiagnostic(
-                      server.id,
-                      `${getDiagnosticError(data)} (Ping OK: serveur joignable, WinRM/CIM indisponible).`,
-                      server.name,
-                      server.ipAddress,
-                    );
-                  } else {
-                    updateServerStatus(server.id, { status: 'warning' });
-                    setErrorDiagnostic(server.id, getDiagnosticError(data), server.name, server.ipAddress);
-                  }
+                  const diagnostic = !pingOk && !metricsOk
+                    ? `Validation incomplète: Ping KO + WinRM/CIM KO. ${getDiagnosticError(data)}`
+                    : !pingOk
+                      ? 'Validation incomplète: Ping KO (connectivité réseau indisponible).'
+                      : `Validation incomplète: WinRM/CIM KO. ${getDiagnosticError(data)}`;
+                  updateServerStatus(server.id, { status: pingOk ? 'warning' : 'offline' });
+                  setErrorDiagnostic(server.id, diagnostic, server.name, server.ipAddress);
                 }
                 return;
               }
+
               av[server.id].online++;
               const healthScore = Math.round(100 - Math.max(data.cpu || 0, data.memory || 0, data.disk || 0));
               const services = (data.stoppedServices || []).map((name: string, i: number) => ({
@@ -257,15 +262,8 @@ export default function ServersPage() {
               if (!av[server.id]) av[server.id] = { checks: 0, online: 0 };
               av[server.id].checks++;
               if (!isMounted || controller.signal.aborted) return;
-              const reachable = await pingReachable(server.ipAddress);
-              if (reachable) {
-                av[server.id].online++;
-                updateServerStatus(server.id, { status: 'online' });
-                setErrorDiagnostic(server.id, 'Ping OK, mais collecte distante indisponible (WinRM/CIM).', server.name, server.ipAddress);
-              } else {
-                updateServerStatus(server.id, { status: 'offline' });
-                setErrorDiagnostic(server.id, 'Serveur inaccessible (réseau/WinRM).', server.name, server.ipAddress);
-              }
+              updateServerStatus(server.id, { status: 'offline' });
+              setErrorDiagnostic(server.id, 'Validation incomplète: Ping/WinRM indisponibles.', server.name, server.ipAddress);
             }
           }),
         );
@@ -401,7 +399,7 @@ export default function ServersPage() {
       const id = Date.now().toString();
       setPendingDiagnostic(id, 'Serveur ajouté. Récupération des métriques en cours (10–15s)...', formData.name.trim(), normalizedIpAddress);
       addServer({
-        id, name: formData.name.trim(), ipAddress: normalizedIpAddress, status: 'online', healthScore: 100,
+        id, name: formData.name.trim(), ipAddress: normalizedIpAddress, status: 'warning', healthScore: 0,
         metrics: { id: `${id}-metrics`, serverId: id, cpuUsage: 0, memoryUsage: 0, diskUsage: 0, networkIn: 0, networkOut: 0, processCount: 0, uptime: 0, timestamp: new Date() },
         lastHealthCheck: new Date(), services: [],
       });

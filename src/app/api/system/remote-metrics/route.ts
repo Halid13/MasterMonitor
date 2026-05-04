@@ -8,7 +8,11 @@ import { captureSystemEvents } from '@/services/eventCapture';
 import { persistMonitoringSnapshot } from '@/lib/monitoring-db';
 
 const { MM_REMOTE_USER, MM_REMOTE_PASS } = process.env;
-const REMOTE_METRICS_TIMEOUT_MS = 20_000;
+const REMOTE_METRICS_TIMEOUT_MS = (() => {
+  const raw = Number(process.env.MM_REMOTE_TIMEOUT_MS || '65000');
+  if (!Number.isFinite(raw)) return 65_000;
+  return Math.max(10_000, Math.min(180_000, Math.floor(raw)));
+})();
 
 const isSafeHost = (value: string) => /^[a-zA-Z0-9._:-]+$/.test(value);
 
