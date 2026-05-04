@@ -557,7 +557,7 @@ export default function EquipmentPage() {
                 : 'bg-white/50 backdrop-blur-lg border border-white/30 text-slate-900 hover:bg-white/70'
             }`}
           >
-            🔍 Tous les équipements
+            Tous les équipements
           </button>
           {filterStatus === 'all' && (
             <button
@@ -576,7 +576,7 @@ export default function EquipmentPage() {
                 : 'bg-white/50 backdrop-blur-lg border border-white/30 text-slate-900 hover:bg-white/70'
             }`}
           >
-            ✅ En service
+            En service
           </button>
           <button
             onClick={() => setFilterStatus('stock')}
@@ -586,7 +586,7 @@ export default function EquipmentPage() {
                 : 'bg-white/50 backdrop-blur-lg border border-white/30 text-slate-900 hover:bg-white/70'
             }`}
           >
-            📦 En stock
+            En stock
           </button>
         </div>
 
@@ -596,7 +596,7 @@ export default function EquipmentPage() {
             <div className="bg-white/95 backdrop-blur-xl rounded-2xl p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-white/20 shadow-2xl">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  {editingId ? '✏️ Modifier l\'équipement' : '➕ Ajouter un équipement'}
+                  {editingId ? 'Modifier l\'équipement' : 'Ajouter un équipement'}
                 </h2>
                 <button
                   onClick={() => {
@@ -753,7 +753,7 @@ export default function EquipmentPage() {
                     type="submit"
                     className="flex-1 px-3 py-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-xs rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 font-semibold"
                   >
-                    {editingId ? '💾 Mettre à jour' : '✅ Ajouter'}
+                    {editingId ? 'Mettre à jour' : 'Ajouter'}
                   </button>
                   <button
                     type="button"
@@ -776,9 +776,6 @@ export default function EquipmentPage() {
         {equipmentInService.length > 0 && (filterStatus === 'all' || filterStatus === 'in-service') && (
           <div className="rounded-2xl bg-gradient-to-br from-emerald-50/80 via-white/60 to-emerald-50/40 backdrop-blur-sm border border-emerald-200/40 p-6 space-y-4">
             <div className="flex items-center gap-3 pb-4 border-b border-emerald-200/40">
-              <div className="p-2 rounded-lg bg-emerald-100/50">
-                <span className="text-2xl">✅</span>
-              </div>
               <div className="flex-1">
                 <h2 className="text-xl font-bold text-emerald-900">Équipements en Service</h2>
                 <p className="text-xs text-emerald-600/70">Matériel actuellement déployé</p>
@@ -805,9 +802,6 @@ export default function EquipmentPage() {
         {equipmentInStock.length > 0 && (filterStatus === 'all' || filterStatus === 'stock') && (
           <div className="rounded-2xl bg-gradient-to-br from-blue-50/80 via-white/60 to-blue-50/40 backdrop-blur-sm border border-blue-200/40 p-6 space-y-4">
             <div className="flex items-center gap-3 pb-4 border-b border-blue-200/40">
-              <div className="p-2 rounded-lg bg-blue-100/50">
-                <span className="text-2xl">📦</span>
-              </div>
               <div className="flex-1">
                 <h2 className="text-xl font-bold text-blue-900">Matériel Disponible</h2>
                 <p className="text-xs text-blue-600/70">En attente de déploiement</p>
