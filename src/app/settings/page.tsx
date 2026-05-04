@@ -167,12 +167,12 @@ export default function SettingsPage() {
   const panelClassName = 'group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/75 p-4 shadow-sm backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md';
   const normalizedRole = settings.role.toLowerCase();
   const roleMeta = normalizedRole.includes('admin')
-    ? { emoji: '👑', tone: 'border-red-200/80 bg-gradient-to-r from-red-50 to-white text-red-700' }
+    ? { tone: 'border-red-200/80 bg-gradient-to-r from-red-50 to-white text-red-700' }
     : normalizedRole.includes('manager')
-      ? { emoji: '🧭', tone: 'border-amber-200/80 bg-gradient-to-r from-amber-50 to-white text-amber-700' }
+      ? { tone: 'border-amber-200/80 bg-gradient-to-r from-amber-50 to-white text-amber-700' }
       : normalizedRole.includes('techn')
-        ? { emoji: '🛠️', tone: 'border-sky-200/80 bg-gradient-to-r from-sky-50 to-white text-sky-700' }
-        : { emoji: '👤', tone: 'border-slate-200/80 bg-gradient-to-r from-slate-50 to-white text-slate-700' };
+        ? { tone: 'border-sky-200/80 bg-gradient-to-r from-sky-50 to-white text-sky-700' }
+        : { tone: 'border-slate-200/80 bg-gradient-to-r from-slate-50 to-white text-slate-700' };
 
   return (
     <MainLayout>
@@ -234,7 +234,6 @@ export default function SettingsPage() {
                 <label className="text-xs font-medium text-slate-600">Rôle</label>
                 <div className={`mt-1.5 flex h-9 w-full items-center rounded-lg border px-3 shadow-sm transition-all hover:-translate-y-0.5 ${roleMeta.tone}`}>
                   <span className="inline-flex items-center gap-2 truncate text-sm font-semibold leading-none">
-                    <span>{roleMeta.emoji}</span>
                     <span>{settings.role}</span>
                   </span>
                 </div>
