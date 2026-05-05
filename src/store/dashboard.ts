@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import { Equipment, User, Ticket, ServerStatus, Alert, IPAddress, Subnet, SystemLog, LogFilter } from '@/types';
+import { Equipment, User, Ticket, ServerStatus, Alert, IPAddress, IPAddressHistory, Subnet, SystemLog, LogFilter } from '@/types';
 
 const getCookieValue = (name: string) => {
   if (typeof document === 'undefined') return undefined;
@@ -72,6 +72,10 @@ interface DashboardStore {
   addIPAddress: (ip: IPAddress) => void;
   updateIPAddress: (id: string, ip: Partial<IPAddress>) => void;
   deleteIPAddress: (id: string) => void;
+
+  // IP Address History
+  ipHistory: IPAddressHistory[];
+  clearIPHistory: () => void;
 
   // Subnets
   subnets: Subnet[];
@@ -423,19 +427,30 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   setIPAddresses: (ips) => set({ ipAddresses: ips }),
   addIPAddress: (ip) =>
     set((state) => {
+      const actor = getCurrentUsername();
       postLog({
         category: 'action',
         level: 'info',
         module: 'IPAddress',
         action: 'create',
         objectImpacted: ip.id,
-        username: getCurrentUsername(),
-        newValue: JSON.stringify({ address: ip.address, subnet: ip.subnet, assignedTo: ip.assignedTo }),
+        username: actor,
+        newValue: JSON.stringify({ address: ip.address, subnet: ip.subnet, status: ip.status }),
       });
-      return { ipAddresses: [...state.ipAddresses, ip] };
+      const histEntry: IPAddressHistory = {
+        id: `iph-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        ipAddressId: ip.id,
+        address: ip.address,
+        action: 'create',
+        changedBy: actor,
+        changedAt: new Date(),
+        newValue: JSON.stringify({ status: ip.status, subnet: ip.subnet, linkedMachine: ip.linkedMachine, linkedUser: ip.linkedUser, linkedService: ip.linkedService, comment: ip.comment }),
+      };
+      return { ipAddresses: [...state.ipAddresses, ip], ipHistory: [histEntry, ...state.ipHistory] };
     }),
   updateIPAddress: (id, ip) =>
     set((state) => {
+      const actor = getCurrentUsername();
       const previous = state.ipAddresses.find((i) => i.id === id);
       postLog({
         category: 'action',
@@ -443,16 +458,28 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
         module: 'IPAddress',
         action: 'update',
         objectImpacted: id,
-        username: getCurrentUsername(),
-        oldValue: previous ? JSON.stringify({ address: previous.address, subnet: previous.subnet, assignedTo: previous.assignedTo }) : undefined,
+        username: actor,
+        oldValue: previous ? JSON.stringify({ address: previous.address, subnet: previous.subnet, status: previous.status }) : undefined,
         newValue: JSON.stringify(ip),
       });
+      const histEntry: IPAddressHistory = {
+        id: `iph-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        ipAddressId: id,
+        address: previous?.address ?? id,
+        action: 'update',
+        changedBy: actor,
+        changedAt: new Date(),
+        oldValue: previous ? JSON.stringify({ status: previous.status, subnet: previous.subnet, linkedMachine: previous.linkedMachine, linkedUser: previous.linkedUser, linkedService: previous.linkedService, comment: previous.comment }) : undefined,
+        newValue: JSON.stringify(ip),
+      };
       return {
-        ipAddresses: state.ipAddresses.map((i) => (i.id === id ? { ...i, ...ip } : i)),
+        ipAddresses: state.ipAddresses.map((i) => (i.id === id ? { ...i, ...ip, updatedAt: new Date(), updatedBy: actor } : i)),
+        ipHistory: [histEntry, ...state.ipHistory],
       };
     }),
   deleteIPAddress: (id) =>
     set((state) => {
+      const actor = getCurrentUsername();
       const previous = state.ipAddresses.find((i) => i.id === id);
       postLog({
         category: 'action',
@@ -460,11 +487,27 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
         module: 'IPAddress',
         action: 'delete',
         objectImpacted: id,
-        username: getCurrentUsername(),
-        oldValue: previous ? JSON.stringify({ address: previous.address, subnet: previous.subnet, assignedTo: previous.assignedTo }) : undefined,
+        username: actor,
+        oldValue: previous ? JSON.stringify({ address: previous.address, subnet: previous.subnet, status: previous.status }) : undefined,
       });
-      return { ipAddresses: state.ipAddresses.filter((i) => i.id !== id) };
+      const histEntry: IPAddressHistory = {
+        id: `iph-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        ipAddressId: id,
+        address: previous?.address ?? id,
+        action: 'delete',
+        changedBy: actor,
+        changedAt: new Date(),
+        oldValue: previous ? JSON.stringify({ status: previous.status, subnet: previous.subnet, linkedMachine: previous.linkedMachine, linkedUser: previous.linkedUser, linkedService: previous.linkedService }) : undefined,
+      };
+      return {
+        ipAddresses: state.ipAddresses.filter((i) => i.id !== id),
+        ipHistory: [histEntry, ...state.ipHistory],
+      };
     }),
+
+  // IP History
+  ipHistory: [],
+  clearIPHistory: () => set({ ipHistory: [] }),
 
   // Subnets
   subnets: [],

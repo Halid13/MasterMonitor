@@ -1,15 +1,30 @@
 // Types pour les adresses IP
+export type IPAddressStatus = 'free' | 'assigned' | 'reserved' | 'conflict';
+
 export interface IPAddress {
   id: string;
   address: string;
-  subnet: string;
-  gateway: string;
-  dnsServers: string[];
-  isActive: boolean;
-  assignedTo?: string;
+  status: IPAddressStatus;
+  subnet: string;          // CIDR référence, ex: "192.168.1.0/24"
+  linkedMachine?: string;  // nom ou ID de l'équipement lié
+  linkedUser?: string;     // nom ou ID de l'utilisateur lié
+  linkedService?: string;  // service / département
+  comment?: string;
   lastSeen?: Date;
-  createdAt: Date;
   updatedAt: Date;
+  updatedBy?: string;      // auteur de la dernière modification
+  createdAt: Date;
+}
+
+export interface IPAddressHistory {
+  id: string;
+  ipAddressId: string;
+  address: string;
+  action: 'create' | 'update' | 'delete';
+  changedBy: string;
+  changedAt: Date;
+  oldValue?: string;
+  newValue?: string;
 }
 
 // Types pour les sous-réseaux
