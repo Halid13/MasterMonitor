@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { Equipment } from '@/types';
-import { Plus, Trash2, Edit2, X, Laptop, Printer, Smartphone, Wifi, Package, AlertCircle, Download } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Monitor, Server, Printer, Smartphone, Wifi, Package, AlertCircle, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const getCookieValue = (name: string) => {
@@ -53,9 +53,11 @@ export default function EquipmentPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'in-service' | 'stock'>('all');
+  const [filterType, setFilterType] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Equipment | null>(null);
   const [formData, setFormData] = useState<Partial<Equipment>>({
-    type: 'laptop',
+    type: 'pc',
     status: 'stock',
   });
 
@@ -163,7 +165,7 @@ export default function EquipmentPage() {
       await persistEquipmentNow([newEquipment]);
     }
 
-    setFormData({ type: 'laptop', status: 'stock' });
+    setFormData({ type: 'pc', status: 'stock' });
     setFormError(null);
     setShowModal(false);
   };
@@ -181,22 +183,21 @@ export default function EquipmentPage() {
 
   const getTypeIcon = (type: string) => {
     switch (type) {
-      case 'laptop':
-        return Laptop;
-      case 'printer':
-        return Printer;
-      case 'phone':
-        return Smartphone;
-      case 'network':
-        return Wifi;
-      default:
-        return Package;
+      case 'pc':
+      case 'laptop': return Monitor;  // rétrocompat
+      case 'server': return Server;
+      case 'printer': return Printer;
+      case 'phone': return Smartphone;
+      case 'network': return Wifi;
+      default: return Package;
     }
   };
 
   const getTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      laptop: 'Laptop',
+      pc: 'PC',
+      laptop: 'PC',   // rétrocompat
+      server: 'Serveur',
       printer: 'Imprimante',
       phone: 'Téléphone IP',
       network: 'Équipement réseau',
@@ -205,9 +206,24 @@ export default function EquipmentPage() {
     return labels[type] || type;
   };
 
-  // Séparer les équipements en deux catégories
-  const equipmentInService = equipment.filter(item => item.status === 'in-service');
-  const equipmentInStock = equipment.filter(item => item.status === 'stock');
+  // Filtrage
+  const filteredEquipment = useMemo(() => {
+    // Normalise 'laptop' (ancienne valeur) vers 'pc'
+    const normalize = (type: string) => type === 'laptop' ? 'pc' : type;
+    return equipment.filter((item) => {
+      const q = searchQuery.trim().toLowerCase();
+      if (q) {
+        const haystack = [item.name, item.serialNumber, item.hardwareId, item.ipAddress, item.departmentService]
+          .filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      if (filterType !== 'all' && normalize(item.type) !== filterType) return false;
+      return true;
+    });
+  }, [equipment, searchQuery, filterType]);
+
+  const equipmentInService = filteredEquipment.filter(item => item.status === 'in-service');
+  const equipmentInStock = filteredEquipment.filter(item => item.status === 'stock');
 
   // Fonction pour exporter les équipements en service en XLSX (1 champ = 1 colonne)
   const exportToXLSX = () => {
@@ -452,8 +468,20 @@ export default function EquipmentPage() {
         <div className="hidden md:flex items-center gap-6 flex-shrink-0 text-xs text-slate-600">
           {item.serialNumber && (
             <div className="text-center">
-              <p className="text-slate-400 mb-0.5">SN</p>
-              <p className="font-mono text-slate-700">{item.serialNumber.substring(0, 8)}...</p>
+              <p className="text-slate-400 mb-0.5">N° Série</p>
+              <p className="font-mono text-slate-700">{item.serialNumber.substring(0, 10)}</p>
+            </div>
+          )}
+          {item.hardwareId && (
+            <div className="text-center">
+              <p className="text-slate-400 mb-0.5">IMEI / Asset</p>
+              <p className="font-mono text-slate-700">{item.hardwareId.substring(0, 10)}</p>
+            </div>
+          )}
+          {item.ipAddress && (
+            <div className="text-center">
+              <p className="text-slate-400 mb-0.5">Adresse IP</p>
+              <p className="font-mono text-blue-700">{item.ipAddress}</p>
             </div>
           )}
           {item.assignedToUser && item.status === 'in-service' && (
@@ -537,7 +565,7 @@ export default function EquipmentPage() {
           <button
             onClick={() => {
               setEditingId(null);
-              setFormData({ type: 'laptop', status: 'stock' });
+              setFormData({ type: 'pc', status: 'stock' });
               setShowModal(true);
             }}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-sm rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 font-semibold group"
@@ -547,46 +575,62 @@ export default function EquipmentPage() {
           </button>
         </div>
 
-        {/* Filter Buttons */}
-        <div className="flex gap-3 flex-wrap">
-          <button
-            onClick={() => setFilterStatus('all')}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
-              filterStatus === 'all'
-                ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg scale-105'
-                : 'bg-white/50 backdrop-blur-lg border border-white/30 text-slate-900 hover:bg-white/70'
-            }`}
+        {/* Filters */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* Search */}
+          <div className="relative flex-1 max-w-sm">
+            <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            </span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Rechercher…"
+              className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 bg-white/70 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+
+          {/* Status filter */}
+          <div className="flex gap-2 flex-wrap">
+            {(['all', 'in-service', 'stock'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setFilterStatus(s)}
+                className={`px-3 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                  filterStatus === s
+                    ? s === 'all' ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow'
+                      : s === 'in-service' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow'
+                      : 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow'
+                    : 'bg-white/60 border border-slate-200 text-slate-700 hover:bg-white/80'
+                }`}
+              >
+                {s === 'all' ? 'Tous' : s === 'in-service' ? 'En service' : 'En stock'}
+              </button>
+            ))}
+          </div>
+
+          {/* Type filter */}
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-slate-200 bg-white/70 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
           >
-            Tous les équipements
-          </button>
-          {filterStatus === 'all' && (
-            <button
-              onClick={exportAllToXLSX}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm rounded-xl hover:bg-slate-800 transition-colors"
-            >
-              <Download size={16} />
-              Exporter XLSX (Tous)
-            </button>
-          )}
+            <option value="all">Tous les types</option>
+            <option value="pc">PC</option>
+            <option value="server">Serveur</option>
+            <option value="printer">Imprimante</option>
+            <option value="phone">Téléphone IP</option>
+            <option value="network">Équipement réseau</option>
+            <option value="other">Autre</option>
+          </select>
+
+          {/* Export buttons */}
           <button
-            onClick={() => setFilterStatus('in-service')}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
-              filterStatus === 'in-service'
-                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg scale-105'
-                : 'bg-white/50 backdrop-blur-lg border border-white/30 text-slate-900 hover:bg-white/70'
-            }`}
+            onClick={filterStatus === 'stock' ? exportStockToXLSX : filterStatus === 'in-service' ? exportToXLSX : exportAllToXLSX}
+            className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-white text-sm rounded-xl hover:bg-slate-700 transition-colors font-medium"
           >
-            En service
-          </button>
-          <button
-            onClick={() => setFilterStatus('stock')}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
-              filterStatus === 'stock'
-                ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg scale-105'
-                : 'bg-white/50 backdrop-blur-lg border border-white/30 text-slate-900 hover:bg-white/70'
-            }`}
-          >
-            En stock
+            <Download size={15} /> Exporter XLSX
           </button>
         </div>
 
@@ -596,13 +640,13 @@ export default function EquipmentPage() {
             <div className="bg-white/95 backdrop-blur-xl rounded-2xl p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-white/20 shadow-2xl">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  {editingId ? 'Modifier l\'équipement' : 'Ajouter un équipement'}
+                  {editingId ? "Modifier l'équipement" : 'Ajouter un équipement'}
                 </h2>
                 <button
                   onClick={() => {
                     setShowModal(false);
                     setEditingId(null);
-                    setFormData({ type: 'laptop', status: 'stock' });
+                    setFormData({ type: 'pc', status: 'stock' });
                   }}
                   className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                 >
@@ -638,7 +682,8 @@ export default function EquipmentPage() {
                       className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
                       required
                     >
-                      <option value="laptop">Laptop</option>
+                      <option value="pc">PC</option>
+                      <option value="server">Serveur</option>
                       <option value="printer">Imprimante</option>
                       <option value="phone">Téléphone IP</option>
                       <option value="network">Équipement réseau</option>
@@ -659,13 +704,24 @@ export default function EquipmentPage() {
                   </div>
 
                   <div className="group">
-                    <label className="block text-xs font-semibold text-slate-900 mb-2">Identifiant matériel (IMEI)</label>
+                    <label className="block text-xs font-semibold text-slate-900 mb-2">Identifiant matériel (IMEI / asset tag)</label>
                     <input
                       type="text"
                       value={formData.hardwareId || ''}
                       onChange={(e) => setFormData({ ...formData, hardwareId: e.target.value })}
                       className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
                       placeholder="IMEI ou identifiant unique"
+                    />
+                  </div>
+
+                  <div className="group">
+                    <label className="block text-xs font-semibold text-slate-900 mb-2">Adresse IP associée</label>
+                    <input
+                      type="text"
+                      value={formData.ipAddress || ''}
+                      onChange={(e) => setFormData({ ...formData, ipAddress: e.target.value })}
+                      className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                      placeholder="ex: 192.168.1.100"
                     />
                   </div>
 
@@ -684,7 +740,7 @@ export default function EquipmentPage() {
 
                   {formData.status === 'in-service' && (
                     <>
-                      {(formData.type === 'printer' || formData.type === 'network' || formData.type === 'phone' || formData.type === 'laptop') && (
+                      {(formData.type === 'printer' || formData.type === 'network' || formData.type === 'phone' || formData.type === 'pc' || formData.type === 'server') && (
                         <div className="group">
                           <label className="block text-xs font-semibold text-slate-900 mb-2">Service/Département</label>
                           <input
@@ -760,7 +816,7 @@ export default function EquipmentPage() {
                     onClick={() => {
                       setShowModal(false);
                       setEditingId(null);
-                      setFormData({ type: 'laptop', status: 'stock' });
+                      setFormData({ type: 'pc', status: 'stock' });
                     }}
                     className="flex-1 px-3 py-1.5 bg-slate-200 text-slate-700 text-xs rounded-xl hover:bg-slate-300 transition-all duration-300 font-semibold"
                   >
@@ -780,14 +836,6 @@ export default function EquipmentPage() {
                 <h2 className="text-xl font-bold text-emerald-900">Équipements en Service</h2>
                 <p className="text-xs text-emerald-600/70">Matériel actuellement déployé</p>
               </div>
-              <button
-                onClick={exportToXLSX}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm rounded-lg transition-colors font-semibold"
-                title="Exporter en XLSX"
-              >
-                <Download size={16} />
-                Exporter XLSX
-              </button>
               <span className="px-4 py-2 rounded-lg bg-emerald-100 text-emerald-800 text-sm font-bold">{equipmentInService.length}</span>
             </div>
             <div className="space-y-2">
@@ -806,14 +854,6 @@ export default function EquipmentPage() {
                 <h2 className="text-xl font-bold text-blue-900">Matériel Disponible</h2>
                 <p className="text-xs text-blue-600/70">En attente de déploiement</p>
               </div>
-              <button
-                onClick={exportStockToXLSX}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors font-semibold"
-                title="Exporter en XLSX"
-              >
-                <Download size={16} />
-                Exporter XLSX
-              </button>
               <span className="px-4 py-2 rounded-lg bg-blue-100 text-blue-800 text-sm font-bold">{equipmentInStock.length}</span>
             </div>
             <div className="space-y-2">
@@ -825,11 +865,13 @@ export default function EquipmentPage() {
         )}
 
         {/* Empty State */}
-        {equipment.length === 0 && (
+        {filteredEquipment.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 px-4">
             <AlertCircle size={48} className="text-slate-400 mb-4" />
             <p className="text-xl text-slate-500 font-medium">Aucun équipement trouvé</p>
-            <p className="text-slate-400 mt-2">Commencez par en ajouter un!</p>
+            <p className="text-slate-400 mt-2">
+              {equipment.length === 0 ? 'Commencez par en ajouter un !' : 'Aucun résultat pour ces filtres.'}
+            </p>
           </div>
         )}
       </div>

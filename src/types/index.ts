@@ -45,16 +45,18 @@ export interface Subnet {
 }
 
 // Types pour les équipements informatiques
+export type EquipmentType = 'pc' | 'server' | 'printer' | 'phone' | 'network' | 'other';
+
 export interface Equipment {
   id: string;
   name: string;
-  type: 'laptop' | 'printer' | 'phone' | 'network' | 'other';
+  type: EquipmentType;
   serialNumber: string;
   hardwareId?: string; // IMEI ou équivalent
   ipAddress?: string;
   status: 'in-service' | 'stock';
-  assignedToUser?: string; // ID de l'utilisateur si en service (pour laptop, phone, other)
-  departmentService?: string; // Département/Service si en service (pour printer, network)
+  assignedToUser?: string; // ID de l'utilisateur si en service
+  departmentService?: string; // Département/Service si en service
   dateInService?: Date; // Date de mise en service
   createdAt: Date;
   updatedAt: Date;
