@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import MainLayout from '@/components/MainLayout';
 import { useDashboardStore } from '@/store/dashboard';
 import { IPAddress, IPAddressStatus, Subnet } from '@/types';
@@ -17,6 +17,7 @@ import {
   History,
   Network,
   Plus,
+  Radio,
   RefreshCw,
   Search,
   Trash2,
@@ -200,7 +201,11 @@ type PingHistoryItem = {
   sent: number; received: number; testedAt: string;
 };
 
-type ActiveTab = 'ipam' | 'subnets' | 'tools';
+type ActiveTab = 'ipam' | 'subnets' | 'tools' | 'scanner';
+
+type ScanResult = { ip: string; reachable: boolean; hostname?: string; latencyMs?: number; mac?: string; };
+type ScanProgress = { scanned: number; total: number };
+type ScanDone = { total: number; reachable: number; elapsed: number };
 
 type LocalIPEntry = {
   address: string;
@@ -333,6 +338,90 @@ export default function IPAddressesPage() {
   const [calcSubnets, setCalcSubnets] = useState(8);
   const [calcSubnetIndexMode, setCalcSubnetIndexMode] = useState<'auto' | 'index'>('auto');
   const [calcSubnetIndex, setCalcSubnetIndex] = useState(1);
+
+  // ─── Scanner state ────────────────────────────────────────────────────────────
+  const [scanRange, setScanRange] = useState('192.168.1.1-254');
+  const [scanRunning, setScanRunning] = useState(false);
+  const [scanResults, setScanResults] = useState<ScanResult[]>([]);
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
+  const [scanDone, setScanDone] = useState<ScanDone | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanFilter, setScanFilter] = useState<'all' | 'online'>('all');
+  const [selectedScan, setSelectedScan] = useState<Set<string>>(new Set());
+  const scanSourceRef = useRef<EventSource | null>(null);
+
+  const startScan = () => {
+    scanSourceRef.current?.close();
+    setScanResults([]);
+    setScanProgress(null);
+    setScanDone(null);
+    setScanError(null);
+    setScanRunning(true);
+    setSelectedScan(new Set());
+
+    const src = new EventSource(`/api/system/ip-scan?range=${encodeURIComponent(scanRange)}`);
+    scanSourceRef.current = src;
+
+    src.addEventListener('start', (e) => {
+      const d = JSON.parse(e.data);
+      setScanProgress({ scanned: 0, total: d.total });
+    });
+    src.addEventListener('result', (e) => {
+      const r: ScanResult = JSON.parse(e.data);
+      setScanResults((prev) => [...prev, r]);
+    });
+    src.addEventListener('progress', (e) => {
+      setScanProgress(JSON.parse(e.data));
+    });
+    src.addEventListener('done', (e) => {
+      setScanDone(JSON.parse(e.data));
+      setScanRunning(false);
+      src.close();
+    });
+    src.addEventListener('error', (e) => {
+      // @ts-ignore
+      setScanError(e.data ? JSON.parse(e.data).message : 'Erreur de scan');
+      setScanRunning(false);
+      src.close();
+    });
+    src.onerror = () => {
+      setScanRunning(false);
+      src.close();
+    };
+  };
+
+  const stopScan = () => {
+    scanSourceRef.current?.close();
+    setScanRunning(false);
+  };
+
+  const importScanSelected = () => {
+    const existing = new Set(ipAddresses.map((ip) => ip.address));
+    const now = new Date();
+    scanResults
+      .filter((r) => r.reachable && selectedScan.has(r.ip) && !existing.has(r.ip))
+      .forEach((r) => {
+        addIPAddress({
+          id: `ip-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          address: r.ip,
+          status: 'assigned',
+          subnet: '',
+          linkedMachine: r.hostname ?? undefined,
+          comment: [
+            r.mac ? `MAC: ${r.mac}` : '',
+            r.hostname ? `Host: ${r.hostname}` : '',
+            r.latencyMs !== undefined ? `Latence: ${r.latencyMs}ms` : '',
+          ].filter(Boolean).join(' | '),
+          updatedAt: now,
+          createdAt: now,
+        });
+      });
+    setSelectedScan(new Set());
+    setActiveTab('ipam');
+  };
+
+  // Cleanup EventSource on unmount
+  useEffect(() => { return () => { scanSourceRef.current?.close(); }; }, []);
 
   // ─── IPAM computed ────────────────────────────────────────────────────────────
 
@@ -616,6 +705,7 @@ export default function IPAddressesPage() {
             { key: 'ipam', label: 'Adresses IP', icon: <Network size={15} /> },
             { key: 'subnets', label: 'Sous-réseaux', icon: <Wifi size={15} /> },
             { key: 'tools', label: 'Tests & Calcul', icon: <Calculator size={15} /> },
+            { key: 'scanner', label: 'Scanner réseau', icon: <Radio size={15} /> },
           ] as { key: ActiveTab; label: string; icon: React.ReactNode }[]).map((tab) => (
             <button
               key={tab.key}
@@ -1087,6 +1177,218 @@ export default function IPAddressesPage() {
                 ) : <p className="text-slate-500">Résultat requis.</p>}
               </div>
             </section>
+          </div>
+        )}
+
+        {/* ═══════════════ TAB: SCANNER ═══════════════ */}
+        {activeTab === 'scanner' && (
+          <div className="space-y-5">
+
+            {/* Control panel */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
+              <div className="flex items-center gap-2">
+                <Radio size={20} className="text-violet-500" />
+                <h2 className="text-lg font-bold text-slate-800">Scanner réseau IP</h2>
+                <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">Advanced IP Scanner</span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Plage d'adresses IP</label>
+                  <input
+                    value={scanRange}
+                    onChange={(e) => setScanRange(e.target.value)}
+                    disabled={scanRunning}
+                    placeholder="192.168.1.1-254 ou 192.168.1.0/24"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:bg-slate-50"
+                  />
+                  <div className="flex gap-3 mt-1.5 flex-wrap">
+                    {['192.168.1.1-254', '192.168.0.1-254', '10.0.0.1-254', '172.16.0.1-254'].map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setScanRange(p)}
+                        disabled={scanRunning}
+                        className="text-xs text-violet-600 hover:underline disabled:opacity-40"
+                      >{p}</button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-end gap-2">
+                  {!scanRunning ? (
+                    <button
+                      onClick={startScan}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 text-white font-semibold hover:bg-violet-700 shadow"
+                    >
+                      <Radio size={16} /> Scanner
+                    </button>
+                  ) : (
+                    <button
+                      onClick={stopScan}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 text-white font-semibold hover:bg-rose-700"
+                    >
+                      <X size={16} /> Arrêter
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              {scanProgress && (
+                <div>
+                  <div className="flex justify-between text-xs text-slate-500 mb-1">
+                    <span>{scanProgress.scanned} / {scanProgress.total} adresses</span>
+                    <span>{Math.round((scanProgress.scanned / scanProgress.total) * 100)}%</span>
+                  </div>
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-violet-500 rounded-full transition-all duration-200"
+                      style={{ width: `${(scanProgress.scanned / scanProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Done summary */}
+              {scanDone && (
+                <div className="flex flex-wrap gap-5 text-sm pt-1">
+                  <span className="text-slate-600">Scannées : <strong>{scanDone.total}</strong></span>
+                  <span className="text-emerald-700">En ligne : <strong className="text-emerald-600">{scanDone.reachable}</strong></span>
+                  <span className="text-slate-400">Hors ligne : <strong>{scanDone.total - scanDone.reachable}</strong></span>
+                  <span className="text-slate-400">Durée : <strong>{(scanDone.elapsed / 1000).toFixed(1)}s</strong></span>
+                </div>
+              )}
+
+              {/* Error */}
+              {scanError && (
+                <div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 text-sm">
+                  <strong>Erreur :</strong> {scanError}
+                </div>
+              )}
+            </div>
+
+            {/* Results table */}
+            {scanResults.length > 0 && (
+              <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-slate-700">
+                      {scanResults.filter((r) => r.reachable).length} en ligne
+                      {!scanRunning && ` / ${scanResults.length} scannées`}
+                    </span>
+                    <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+                      <button
+                        onClick={() => setScanFilter('all')}
+                        className={`px-3 py-1.5 font-medium transition-colors ${scanFilter === 'all' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                      >Toutes</button>
+                      <button
+                        onClick={() => setScanFilter('online')}
+                        className={`px-3 py-1.5 font-medium transition-colors ${scanFilter === 'online' ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                      >En ligne</button>
+                    </div>
+                    {scanFilter === 'online' && (
+                      <button
+                        className="text-xs text-violet-600 hover:underline"
+                        onClick={() => {
+                          const existing = new Set(ipAddresses.map((ip) => ip.address));
+                          setSelectedScan(new Set(
+                            scanResults.filter((r) => r.reachable && !existing.has(r.ip)).map((r) => r.ip)
+                          ));
+                        }}
+                      >
+                        Tout sélectionner (nouveaux)
+                      </button>
+                    )}
+                  </div>
+
+                  {selectedScan.size > 0 && (
+                    <button
+                      onClick={importScanSelected}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white text-sm font-semibold shadow"
+                    >
+                      <Download size={15} /> Importer ({selectedScan.size})
+                    </button>
+                  )}
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
+                      <tr>
+                        <th className="px-3 py-2 w-8"></th>
+                        <th className="px-3 py-2 text-left">Adresse IP</th>
+                        <th className="px-3 py-2 text-left">Hostname</th>
+                        <th className="px-3 py-2 text-left">MAC</th>
+                        <th className="px-3 py-2 text-left">Latence</th>
+                        <th className="px-3 py-2 text-left">Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {[...scanResults]
+                        .filter((r) => scanFilter === 'all' || r.reachable)
+                        .sort((a, b) => {
+                          const ai = ipToInt(a.ip), bi = ipToInt(b.ip);
+                          if (ai === null || bi === null) return 0;
+                          return ai - bi;
+                        })
+                        .map((r) => {
+                          const alreadyExists = ipAddresses.some((ip) => ip.address === r.ip);
+                          const checked = selectedScan.has(r.ip);
+                          return (
+                            <tr
+                              key={r.ip}
+                              className={`transition-colors ${r.reachable ? 'hover:bg-violet-50/30' : 'opacity-40 bg-slate-50/50'}`}
+                            >
+                              <td className="px-3 py-2">
+                                {r.reachable && (
+                                  <input
+                                    type="checkbox"
+                                    disabled={alreadyExists}
+                                    checked={checked}
+                                    onChange={() => {
+                                      const s = new Set(selectedScan);
+                                      if (s.has(r.ip)) s.delete(r.ip); else s.add(r.ip);
+                                      setSelectedScan(s);
+                                    }}
+                                    className="rounded border-slate-300 text-violet-600"
+                                  />
+                                )}
+                              </td>
+                              <td className="px-3 py-2 font-mono font-semibold text-slate-900">{r.ip}</td>
+                              <td className="px-3 py-2 text-slate-600 text-xs">{r.hostname ?? '—'}</td>
+                              <td className="px-3 py-2 font-mono text-slate-500 text-xs">{r.mac ?? '—'}</td>
+                              <td className="px-3 py-2 text-xs">
+                                {r.reachable && r.latencyMs !== undefined ? (
+                                  <span className={`font-mono ${r.latencyMs < 5 ? 'text-emerald-600' : r.latencyMs < 50 ? 'text-amber-600' : 'text-rose-600'}`}>
+                                    {r.latencyMs}ms
+                                  </span>
+                                ) : '—'}
+                              </td>
+                              <td className="px-3 py-2">
+                                {r.reachable ? (
+                                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${alreadyExists ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                    {alreadyExists ? 'En ligne · importée' : 'En ligne'}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Hors ligne</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Live indicator — show while scan is running but no results yet */}
+            {scanRunning && scanResults.length === 0 && (
+              <div className="flex items-center justify-center py-16 gap-3 text-slate-500">
+                <Radio size={22} className="animate-pulse text-violet-400" />
+                <span>Scan en cours…</span>
+              </div>
+            )}
           </div>
         )}
 
