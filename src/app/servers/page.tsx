@@ -643,27 +643,57 @@ export default function ServersPage() {
                   </div>
 
                   <div className="relative mt-3 grid grid-cols-2 gap-3 text-xs">
-                    <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
-                      <div className="flex items-center justify-between mb-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleServices(server.id)}
+                      className="rounded-2xl border border-slate-100 bg-white/70 hover:bg-white/90 p-4 text-left transition cursor-pointer group"
+                    >
+                      <div className="flex items-center justify-between mb-2">
                         <p className="text-slate-500 text-xs">État services</p>
-                        {server.services.length > 0 && (
-                          <button type="button" onClick={() => toggleServices(server.id)} className="p-0.5 text-slate-400 hover:text-slate-700 transition" title={expandedServices.has(server.id) ? 'Réduire' : 'Détailler'}>
-                            {expandedServices.has(server.id) ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                          </button>
-                        )}
-                      </div>
-                      <div className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusBadge(serviceStatus as any)}`}><span className={`h-1.5 w-1.5 rounded-full ${statusDot(serviceStatus as any)}`} />{serviceStatus}</div>
-                      {expandedServices.has(server.id) && server.services.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          {stoppedServices.map((svc) => (<div key={svc.id} className="flex items-center gap-1.5 text-[10px] text-red-600 font-medium"><XCircle size={10} className="shrink-0" /><span className="truncate">{svc.name}</span></div>))}
-                          {runningServices.map((svc) => (<div key={svc.id} className="flex items-center gap-1.5 text-[10px] text-emerald-600"><CheckCircle2 size={10} className="shrink-0" /><span className="truncate">{svc.name}</span></div>))}
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${statusBadge(serviceStatus as any)}`}>
+                            {serviceStatus}
+                          </span>
+                          {server.services.length > 0 && (
+                            <span className="text-slate-400 group-hover:text-slate-600 transition">
+                              {expandedServices.has(server.id) ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            </span>
+                          )}
                         </div>
+                      </div>
+                      
+                      {server.services.length > 0 ? (
+                        <>
+                          <p className="text-[10px] text-slate-600 font-medium">
+                            {stoppedServices.length > 0 ? (
+                              <span className="text-red-600">{stoppedServices.length} arrêté(s)</span>
+                            ) : (
+                              <span className="text-emerald-600">✓ Tous actifs</span>
+                            )}
+                            {' '}<span className="text-slate-400">/ {server.services.length}</span>
+                          </p>
+                          
+                          {expandedServices.has(server.id) && (
+                            <div className="mt-2 space-y-1 border-t border-slate-100 pt-2">
+                              {stoppedServices.map((svc) => (
+                                <div key={svc.id} className="flex items-center gap-1.5 text-[10px] text-red-600 font-medium">
+                                  <XCircle size={10} />
+                                  {svc.name}
+                                </div>
+                              ))}
+                              {runningServices.map((svc) => (
+                                <div key={svc.id} className="flex items-center gap-1.5 text-[10px] text-emerald-600">
+                                  <CheckCircle2 size={10} />
+                                  {svc.name}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-[10px] text-slate-400">Aucun service</p>
                       )}
-                      {!expandedServices.has(server.id) && server.services.length > 0 && (
-                        <p className="mt-1 text-[10px] text-slate-400">{stoppedServices.length > 0 ? `${stoppedServices.length} arrêté(s) / ${server.services.length} surveillé(s)` : `${runningServices.length} actif(s)`}</p>
-                      )}
-                      {server.services.length === 0 && <p className="mt-1 text-[10px] text-slate-400">Aucun service surveillé</p>}
-                    </div>
+                    </button>
                     <div className="rounded-2xl border border-slate-100 bg-white/70 p-4">
                       <p className="text-slate-500 text-xs mb-1">Alertes actives</p>
                       {alertItems.length === 0 ? (
