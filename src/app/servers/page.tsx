@@ -315,10 +315,11 @@ export default function ServersPage() {
   };
   const getServerStatus = (server: typeof servers[number]) => {
     const cpuStatus = getThresholdStatus(server.metrics.cpuUsage, 70, 85);
+    const ramStatus = getThresholdStatus(server.metrics.memoryUsage, 75, 90);
     const diskStatus = getThresholdStatus(server.metrics.diskUsage, 80, 90);
     const serviceStatus = getServiceStatus(server.services);
-    if ([cpuStatus, diskStatus, serviceStatus].includes('critique')) return 'critique';
-    if ([cpuStatus, diskStatus, serviceStatus].includes('attention')) return 'attention';
+    if ([cpuStatus, ramStatus, diskStatus, serviceStatus].includes('critique')) return 'critique';
+    if ([cpuStatus, ramStatus, diskStatus, serviceStatus].includes('attention')) return 'attention';
     return 'normal';
   };
 
