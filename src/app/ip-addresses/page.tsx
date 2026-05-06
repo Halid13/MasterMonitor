@@ -203,7 +203,7 @@ type PingHistoryItem = {
 
 type ActiveTab = 'ipam' | 'subnets' | 'tools' | 'scanner';
 
-type ScanResult = { ip: string; reachable: boolean; hostname?: string; latencyMs?: number; mac?: string; };
+type ScanResult = { ip: string; reachable: boolean; hostname?: string; latencyMs?: number; mac?: string; resolving?: boolean; };
 type ScanProgress = { scanned: number; total: number };
 type ScanDone = { total: number; reachable: number; elapsed: number };
 
@@ -369,6 +369,16 @@ export default function IPAddressesPage() {
     src.addEventListener('result', (e) => {
       const r: ScanResult = JSON.parse(e.data);
       setScanResults((prev) => [...prev, r]);
+    });
+    src.addEventListener('update', (e) => {
+      const d = JSON.parse(e.data);
+      setScanResults((prev) =>
+        prev.map((r) =>
+          r.ip === d.ip
+            ? { ...r, hostname: d.hostname ?? r.hostname, mac: d.mac ?? r.mac, resolving: false }
+            : r
+        )
+      );
     });
     src.addEventListener('progress', (e) => {
       setScanProgress(JSON.parse(e.data));
@@ -1355,8 +1365,16 @@ export default function IPAddressesPage() {
                                 )}
                               </td>
                               <td className="px-3 py-2 font-mono font-semibold text-slate-900">{r.ip}</td>
-                              <td className="px-3 py-2 text-slate-600 text-xs">{r.hostname ?? '—'}</td>
-                              <td className="px-3 py-2 font-mono text-slate-500 text-xs">{r.mac ?? '—'}</td>
+                              <td className="px-3 py-2 text-xs">
+                                {r.resolving && !r.hostname
+                                  ? <span className="inline-block w-20 h-3 bg-slate-200 rounded animate-pulse" />
+                                  : <span className="text-slate-600">{r.hostname ?? '—'}</span>}
+                              </td>
+                              <td className="px-3 py-2 font-mono text-xs">
+                                {r.resolving && !r.mac
+                                  ? <span className="inline-block w-28 h-3 bg-slate-200 rounded animate-pulse" />
+                                  : <span className="text-slate-500">{r.mac ?? '—'}</span>}
+                              </td>
                               <td className="px-3 py-2 text-xs">
                                 {r.reachable && r.latencyMs !== undefined ? (
                                   <span className={`font-mono ${r.latencyMs < 5 ? 'text-emerald-600' : r.latencyMs < 50 ? 'text-amber-600' : 'text-rose-600'}`}>
