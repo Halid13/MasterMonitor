@@ -1202,44 +1202,47 @@ export default function IPAddressesPage() {
                 <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium">Advanced IP Scanner</span>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="flex-1">
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Plage d'adresses IP</label>
-                  <input
-                    value={scanRange}
-                    onChange={(e) => setScanRange(e.target.value)}
-                    disabled={scanRunning}
-                    placeholder="192.168.1.1-254 ou 192.168.1.0/24"
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:bg-slate-50"
-                  />
-                  <div className="flex gap-3 mt-1.5 flex-wrap">
-                    {['192.168.1.1-254', '192.168.0.1-254', '10.0.0.1-254', '172.16.0.1-254'].map((p) => (
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Plage d'adresses IP</label>
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                  <div className="flex-1">
+                    <input
+                      value={scanRange}
+                      onChange={(e) => setScanRange(e.target.value)}
+                      disabled={scanRunning}
+                      placeholder="192.168.1.1-254 ou 192.168.1.0/24"
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:bg-slate-50"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 sm:flex-none">
+                    {!scanRunning ? (
                       <button
-                        key={p}
-                        onClick={() => setScanRange(p)}
-                        disabled={scanRunning}
-                        className="text-xs text-violet-600 hover:underline disabled:opacity-40"
-                      >{p}</button>
-                    ))}
+                        onClick={startScan}
+                        className="inline-flex w-full items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 text-white font-semibold hover:bg-violet-700 shadow sm:w-auto"
+                      >
+                        <Radio size={16} /> Scanner
+                      </button>
+                    ) : (
+                      <button
+                        onClick={stopScan}
+                        className="inline-flex w-full items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 text-white font-semibold hover:bg-rose-700 sm:w-auto"
+                      >
+                        <X size={16} /> Arrêter
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex items-end gap-2">
-                  {!scanRunning ? (
+                <div className="flex gap-3 mt-1.5 flex-wrap">
+                  {['192.168.1.1-254', '192.168.0.1-254', '10.0.0.1-254', '172.16.0.1-254'].map((p) => (
                     <button
-                      onClick={startScan}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 text-white font-semibold hover:bg-violet-700 shadow"
-                    >
-                      <Radio size={16} /> Scanner
-                    </button>
-                  ) : (
-                    <button
-                      onClick={stopScan}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 text-white font-semibold hover:bg-rose-700"
-                    >
-                      <X size={16} /> Arrêter
-                    </button>
-                  )}
+                      key={p}
+                      onClick={() => setScanRange(p)}
+                      disabled={scanRunning}
+                      className="text-xs text-violet-600 hover:underline disabled:opacity-40"
+                    >{p}</button>
+                  ))}
                 </div>
               </div>
 
