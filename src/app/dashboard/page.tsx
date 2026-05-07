@@ -175,7 +175,7 @@ export default function Dashboard() {
     const activeAlerts = alerts.filter((a) => !a.isResolved).length;
 
     const ipUtilization = ipAddresses.length > 0
-      ? Math.round((ipAddresses.filter((ip) => ip.isActive).length / ipAddresses.length) * 100)
+      ? Math.round((ipAddresses.filter((ip) => ip.status === 'assigned').length / ipAddresses.length) * 100)
       : 0;
 
     setStats({
