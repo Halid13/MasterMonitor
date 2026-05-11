@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Menu, X, Bell, LogOut, Settings, LayoutDashboard, Users, Server, Ticket, FileText, Shield, Monitor } from 'lucide-react';
+import { Menu, X, Bell, LogOut, Settings, LayoutDashboard, Users, Server, Ticket, FileText, Shield, Monitor, Network } from 'lucide-react';
 import { useDashboardStore } from '@/store/dashboard';
 
 interface LayoutProps {
@@ -235,6 +235,7 @@ export const MainLayout = ({ children }: LayoutProps) => {
     { href: '/users', label: 'Utilisateurs', icon: Users, color: 'from-emerald-500 to-teal-500' },
     { href: '/servers', label: 'Serveurs', icon: Server, color: 'from-yellow-500 to-orange-500' },
     { href: '/ip-addresses', label: 'Sous Réseau', icon: Monitor, color: 'from-cyan-500 to-blue-500' },
+    { href: '/topology', label: 'Topologie', icon: Network, color: 'from-indigo-500 to-cyan-500' },
     { href: '/tickets', label: 'Tickets', icon: Ticket, color: 'from-pink-500 to-rose-500' },
     { href: '/logs', label: 'Logs', icon: FileText, color: 'from-indigo-500 to-blue-500' },
   ];
