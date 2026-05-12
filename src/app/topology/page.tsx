@@ -163,6 +163,7 @@ const nextLabel = (type: NodeType, nodes: TopologyNode[]) => {
 export default function TopologyPage() {
   const [nodes, setNodes] = useState<TopologyNode[]>([]);
   const [links, setLinks] = useState<TopologyLink[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [draggingNode, setDraggingNode] = useState<DragState | null>(null);
   const [isPanning, setIsPanning] = useState(false);
@@ -175,18 +176,22 @@ export default function TopologyPage() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed?.nodes)) setNodes(parsed.nodes);
-      if (Array.isArray(parsed?.links)) setLinks(parsed.links);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed?.nodes)) setNodes(parsed.nodes);
+        if (Array.isArray(parsed?.links)) setLinks(parsed.links);
+      }
     } catch {
       // Ignore bad local cache
+    } finally {
+      setIsLoaded(true);
     }
   }, []);
 
   useEffect(() => {
+    if (!isLoaded) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, links }));
-  }, [nodes, links]);
+  }, [nodes, links, isLoaded]);
 
   const nodeMap = useMemo(() => {
     const map = new Map<string, TopologyNode>();
