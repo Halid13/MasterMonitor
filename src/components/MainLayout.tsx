@@ -178,6 +178,7 @@ export const MainLayout = ({ children }: LayoutProps) => {
           payload.equipment = current.equipment;
           payload.ipAddresses = current.ipAddresses;
           payload.subnets = current.subnets;
+          payload.tickets = current.tickets;
         }
 
         if (mode === 'static') {

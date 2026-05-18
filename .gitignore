@@ -3,3 +3,6 @@ node_modules
 .env.example
 .env.local
 .env*.local
+HA_Monitoring_Local.txt
+HA_Etape2_PostgreSQL_Primaire.txt
+HA_Etape1_ProblèmesEtSolutions.txt
