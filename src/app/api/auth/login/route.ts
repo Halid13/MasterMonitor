@@ -81,12 +81,19 @@ export async function POST(req: NextRequest) {
     console.info(`[LDAP ${requestId}] Bind service account OK`);
 
     // 2. Search for user
+    // Also try the local part (e.g. "Administrateur" from "Administrateur@monitor.local")
+    // because the built-in AD admin may not have userPrincipalName set
     const safe = escapeLDAP(identifier);
+    const localPart = identifier.includes('@') ? escapeLDAP(identifier.split('@')[0]) : null;
+    const samFilters = localPart
+      ? `(sAMAccountName=${safe})(sAMAccountName=${localPart})`
+      : `(sAMAccountName=${safe})`;
+    const baseFilter = `(|(${samFilters})(userPrincipalName=${safe})(mail=${safe}))`;
     const userFilter = LDAP_USER_FILTER
-      ? `(&${LDAP_USER_FILTER}(|(sAMAccountName=${safe})(userPrincipalName=${safe})(mail=${safe})))`
-      : `(|(sAMAccountName=${safe})(userPrincipalName=${safe})(mail=${safe}))`;
+      ? `(&${LDAP_USER_FILTER}${baseFilter})`
+      : baseFilter;
 
-    console.info(`[LDAP ${requestId}] Search user: ${identifier}`);
+    console.info(`[LDAP ${requestId}] Search user: ${identifier} (localPart: ${localPart ?? 'none'})`);
     const { searchEntries } = await client.search(LDAP_BASE_DN, {
       scope: 'sub',
       filter: userFilter,
