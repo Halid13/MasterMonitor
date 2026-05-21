@@ -83,8 +83,11 @@ if id "$APP_USER" &>/dev/null; then
   info "Utilisateur '$APP_USER' déjà existant — OK"
 else
   info "Création de l'utilisateur '$APP_USER'..."
-  useradd --system --no-create-home --shell /usr/sbin/nologin "$APP_USER"
+  useradd --system --shell /usr/sbin/nologin --home-dir "/home/$APP_USER" --create-home "$APP_USER"
 fi
+# S'assurer que le home existe même si l'utilisateur existait déjà sans home
+mkdir -p "/home/$APP_USER"
+chown "$APP_USER":"$APP_USER" "/home/$APP_USER"
 
 # --------------------------------------------------------------------------
 # 5. Répertoire de l'application

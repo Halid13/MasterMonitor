@@ -271,7 +271,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const client = ldap.createClient({ url: LDAP_URL });
+  const client = ldap.createClient({
+    url: LDAP_URL,
+    connectTimeout: 5000,
+    timeout: 10000,
+  });
+  // Prevent unhandled 'error' events from becoming uncaughtException
+  client.on('error', (err: Error) => {
+    console.error(`[LDAP ${Date.now()}] Client error (suppressed): ${err?.message}`);
+  });
   const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const ipSource = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '0.0.0.0';
 
