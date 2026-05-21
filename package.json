@@ -33,7 +33,7 @@
     "@types/react": "^19.2.8",
     "autoprefixer": "^10.4.23",
     "axios": "^1.13.2",
-    "ldapjs": "^3.0.7",
+    "ldapts": "^4.2.6",
     "lucide-react": "^0.562.0",
     "next": "^16.1.1",
     "pg": "^8.18.0",

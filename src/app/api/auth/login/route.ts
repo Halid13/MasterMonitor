@@ -1,10 +1,8 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import ldap from 'ldapjs';
+import { Client } from 'ldapts';
 import { captureSecurityEvents } from '@/services/securityEventCapture';
 import { logger } from '@/services/logger';
-
-type LdapClient = ReturnType<typeof ldap.createClient>;
 
 const {
   LDAP_URL,
@@ -16,36 +14,19 @@ const {
 } = process.env;
 
 const escapeLDAP = (value: string) =>
-  value.replace(/\\/g, '\\5c')
+  value
+    .replace(/\\/g, '\\5c')
     .replace(/\*/g, '\\2a')
     .replace(/\(/g, '\\28')
     .replace(/\)/g, '\\29')
     .replace(/\0/g, '\\00');
-
-const bindAsync = (client: LdapClient, dn: string, password: string) =>
-  new Promise<void>((resolve, reject) => {
-    const dnStr = String(dn || '');
-    const pwdStr = String(password || '');
-    if (!dnStr || !pwdStr) {
-      return reject(new Error('EMPTY_PASSWORD'));
-    }
-    client.bind(dnStr, pwdStr, (err: any) => (err ? reject(err) : resolve()));
-  });
-
-const unbindSafe = (client: LdapClient) => {
-  try {
-    client.unbind();
-  } catch {
-    // ignore
-  }
-};
 
 const cnFromDn = (dn: string) => {
   const match = /CN=([^,]+)/i.exec(dn);
   return match ? match[1] : dn;
 };
 
-const normalizeGroupName = (name: string) => name.trim().toLowerCase();
+const normalizeGroupName = (name: string) => String(name || '').trim().toLowerCase();
 
 const decodeLdapEscapedDn = (dn: string) => {
   try {
@@ -64,204 +45,12 @@ const domainFromBaseDn = (baseDn: string) =>
     .map((part) => part.slice(3))
     .join('.');
 
-const bindUserWithFallback = async (
-  client: LdapClient,
-  password: string,
-  candidates: string[],
-  requestId: string,
-) => {
-  let lastError: unknown = null;
-  const tried: string[] = [];
-
-  for (const candidate of candidates) {
-    const principal = String(candidate || '').trim();
-    if (!principal || tried.includes(principal)) continue;
-    tried.push(principal);
-    try {
-      console.info(`[LDAP ${requestId}] Bind user principal: "${principal}"`);
-      await bindAsync(client, principal, password);
-      return principal;
-    } catch (error) {
-      lastError = error;
-      const msg = error instanceof Error ? error.message : 'BIND_FAILED';
-      console.info(`[LDAP ${requestId}] Bind failed for principal "${principal}": ${msg}`);
-    }
-  }
-
-  throw (lastError instanceof Error ? lastError : new Error('INVALID_CREDENTIALS'));
-};
-
-const findUserGroups = (client: LdapClient, baseDn: string, userDn: string) =>
-  new Promise<string[]>((resolve, reject) => {
-    const groupDns: string[] = [];
-    const decodedDn = decodeLdapEscapedDn(userDn);
-    const dnCandidates = Array.from(new Set([userDn, decodedDn].filter(Boolean)));
-    const memberFilters = dnCandidates.map((dn) => `(member=${escapeLDAP(dn)})`).join('');
-    const transitiveFilters = dnCandidates
-      .map((dn) => `(member:1.2.840.113556.1.4.1941:=${escapeLDAP(dn)})`)
-      .join('');
-    const transitiveOpts = {
-      scope: 'sub' as const,
-      filter: `(&(objectClass=group)(|${memberFilters}${transitiveFilters}))`,
-      attributes: ['dn', 'cn'],
-    };
-
-    client.search(baseDn, transitiveOpts, (err: any, res: any) => {
-      if (err) {
-        const code = String(err?.code ?? '');
-        const msg = String(err?.message ?? '');
-        if (code === '32' || /no such object/i.test(msg)) return resolve([]);
-        return reject(err);
-      }
-      res.on('searchEntry', (entry: any) => {
-        const groupDn = String(entry.objectName || entry.dn || '').trim();
-        if (groupDn) groupDns.push(groupDn);
-      });
-      res.on('error', (e: any) => {
-        const code = String(e?.code ?? '');
-        const msg = String(e?.message ?? '');
-        if (code === '32' || /no such object/i.test(msg)) return resolve(Array.from(new Set(groupDns)));
-        return reject(e);
-      });
-      res.on('end', () => resolve(Array.from(new Set(groupDns))));
-    });
-  });
-
-const findGroupDns = (client: LdapClient, baseDn: string, groupNames: string[]) =>
-  new Promise<string[]>((resolve, reject) => {
-    if (groupNames.length === 0) return resolve([]);
-    const filters = groupNames
-      .map((name) => {
-        const safe = escapeLDAP(name);
-        return `(|(cn=${safe})(name=${safe})(displayName=${safe}))`;
-      })
-      .join('');
-
-    const filter = `(&(objectClass=group)(|${filters}))`;
-    const opts = {
-      scope: 'sub' as const,
-      filter,
-      attributes: ['dn'],
-    };
-
-    const dns: string[] = [];
-    client.search(baseDn, opts, (err: any, res: any) => {
-      if (err) return reject(err);
-      res.on('searchEntry', (entry: any) => {
-        const dn = String(entry.objectName || entry.dn || '').trim();
-        if (dn) dns.push(dn);
-      });
-      res.on('error', (e: any) => reject(e));
-      res.on('end', () => resolve(Array.from(new Set(dns))));
-    });
-  });
-
-const isUserInGroupChain = (
-  client: LdapClient,
-  userDn: string,
-  groupDns: string[],
-) =>
-  new Promise<boolean>((resolve, reject) => {
-    if (groupDns.length === 0) return resolve(false);
-    const filters = groupDns
-      .map((dn) => `(memberOf:1.2.840.113556.1.4.1941:=${escapeLDAP(dn)})`)
-      .join('');
-    const filter = `(|${filters})`;
-    const opts = {
-      scope: 'base' as const,
-      filter,
-      sizeLimit: 1,
-      attributes: ['dn'],
-    };
-
-    let found = false;
-    client.search(userDn, opts, (err: any, res: any) => {
-      if (err) {
-        const code = String(err?.code ?? '');
-        const msg = String(err?.message ?? '');
-        if (code === '32' || /no such object/i.test(msg)) return resolve(false);
-        return reject(err);
-      }
-      res.on('searchEntry', () => {
-        found = true;
-      });
-      res.on('error', (e: any) => {
-        const code = String(e?.code ?? '');
-        const msg = String(e?.message ?? '');
-        if (code === '32' || /no such object/i.test(msg)) return resolve(false);
-        return reject(e);
-      });
-      res.on('end', () => resolve(found));
-    });
-  });
-
-const findUserDN = (client: LdapClient, baseDn: string, identifier: string) =>
-  new Promise<{
-    dn: string;
-    decodedDn: string;
-    displayName?: string;
-    groups?: string[];
-    sAMAccountName?: string;
-    userPrincipalName?: string;
-  }>((resolve, reject) => {
-    const safe = escapeLDAP(identifier);
-    const filter = LDAP_USER_FILTER
-      ? `(&${LDAP_USER_FILTER}(|(sAMAccountName=${safe})(userPrincipalName=${safe})(mail=${safe})))`
-      : `(|(sAMAccountName=${safe})(userPrincipalName=${safe})(mail=${safe}))`;
-
-    const opts = {
-      scope: 'sub' as const,
-      filter,
-      sizeLimit: 1,
-      attributes: ['dn', 'distinguishedName', 'cn', 'displayName', 'memberOf', 'sAMAccountName', 'userPrincipalName'],
-    };
-
-    client.search(baseDn, opts, (err: any, res: any) => {
-      if (err) return reject(err);
-      let foundDn = '';
-      let decodedDn = '';
-      let displayName = '';
-      let sAMAccountName = '';
-      let userPrincipalName = '';
-      let groups: string[] = [];
-
-      res.on('searchEntry', (entry: any) => {
-        foundDn = String(entry.object?.distinguishedName || entry.objectName || '').trim();
-        decodedDn = decodeLdapEscapedDn(foundDn);
-        displayName = entry.object?.displayName || entry.object?.cn || '';
-        sAMAccountName = entry.object?.sAMAccountName || '';
-        userPrincipalName = entry.object?.userPrincipalName || '';
-        groups = Array.isArray(entry.object?.memberOf)
-          ? entry.object.memberOf.map((g: any) => String(g))
-          : (entry.object?.memberOf ? [String(entry.object.memberOf)] : []);
-        console.info(`[DEBUG] Raw memberOf: ${JSON.stringify(entry.object?.memberOf)}`);
-        console.info(`[DEBUG] Parsed groups: ${JSON.stringify(groups)}`);
-      });
-      res.on('error', (e: any) => reject(e));
-      res.on('end', () => {
-        if (!foundDn) return reject(new Error('USER_NOT_FOUND'));
-        resolve({ dn: foundDn, decodedDn: decodedDn || foundDn, displayName, groups, sAMAccountName, userPrincipalName });
-      });
-    });
-  });
-
-const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
-  Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`TIMEOUT: ${label} exceeded ${ms}ms`)), ms),
-    ),
-  ]);
-
 export async function POST(req: NextRequest) {
   console.log('[LOGIN] POST request received');
 
   if (!LDAP_URL || !LDAP_BASE_DN || !LDAP_BIND_DN || !LDAP_BIND_PASSWORD) {
     console.error('[LOGIN] Missing LDAP configuration');
-    return NextResponse.json(
-      { ok: false, error: 'Configuration LDAP manquante.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ ok: false, error: 'Configuration LDAP manquante.' }, { status: 500 });
   }
 
   const body = await req.json().catch(() => ({}));
@@ -272,102 +61,187 @@ export async function POST(req: NextRequest) {
   console.log(`[LOGIN] Attempt with identifier: ${identifier}`);
 
   if (!identifier || !password) {
-    console.error('[LOGIN] Missing credentials');
-    return NextResponse.json(
-      { ok: false, error: 'Identifiants requis.' },
-      { status: 400 },
-    );
+    return NextResponse.json({ ok: false, error: 'Identifiants requis.' }, { status: 400 });
   }
 
-  const client = ldap.createClient({
+  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const ipSource =
+    req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '0.0.0.0';
+
+  const client = new Client({
     url: LDAP_URL,
     connectTimeout: 5000,
-    timeout: 10000,
+    tlsOptions: { rejectUnauthorized: false },
   });
-  // Prevent unhandled 'error' events from becoming uncaughtException
-  client.on('error', (err: Error) => {
-    console.error(`[LDAP ${Date.now()}] Client error (suppressed): ${err?.message}`);
-  });
-  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const ipSource = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '0.0.0.0';
-
-  console.info(`[LDAP ${requestId}] Connexion LDAP URL: ${LDAP_URL}`);
-  console.info(`[LDAP ${requestId}] Base DN: ${LDAP_BASE_DN}`);
-  console.info(
-    `[LDAP ${requestId}] Password type: ${typeof passwordRaw}, length: ${password.length}`,
-  );
 
   try {
+    // 1. Bind with service account
     console.info(`[LDAP ${requestId}] Bind service account: ${LDAP_BIND_DN}`);
-    await withTimeout(bindAsync(client, LDAP_BIND_DN, LDAP_BIND_PASSWORD), 8000, 'service-bind');
+    await client.bind(LDAP_BIND_DN, LDAP_BIND_PASSWORD);
     console.info(`[LDAP ${requestId}] Bind service account OK`);
-    console.info(`[LDAP ${requestId}] Search user identifier: ${identifier}`);
-    const {
-      dn,
-      decodedDn,
-      displayName,
-      groups = [],
-      sAMAccountName = '',
-      userPrincipalName = '',
-    } = await withTimeout(findUserDN(client, LDAP_BASE_DN, identifier), 8000, 'findUserDN');
-    console.info(`[LDAP ${requestId}] User DN found: ${dn}`);
-    console.info(`[LDAP ${requestId}] Groups count (direct): ${groups.length}`);
 
-    // Try alternative method to fetch groups if memberOf is empty
-    let finalGroups = groups;
+    // 2. Search for user
+    const safe = escapeLDAP(identifier);
+    const userFilter = LDAP_USER_FILTER
+      ? `(&${LDAP_USER_FILTER}(|(sAMAccountName=${safe})(userPrincipalName=${safe})(mail=${safe})))`
+      : `(|(sAMAccountName=${safe})(userPrincipalName=${safe})(mail=${safe}))`;
+
+    console.info(`[LDAP ${requestId}] Search user: ${identifier}`);
+    const { searchEntries } = await client.search(LDAP_BASE_DN, {
+      scope: 'sub',
+      filter: userFilter,
+      sizeLimit: 1,
+      attributes: ['dn', 'distinguishedName', 'cn', 'displayName', 'memberOf', 'sAMAccountName', 'userPrincipalName'],
+    });
+
+    if (!searchEntries.length) {
+      console.info(`[LDAP ${requestId}] User not found: ${identifier}`);
+      throw new Error('USER_NOT_FOUND');
+    }
+
+    const entry = searchEntries[0];
+    const dn = String(entry.dn || '').trim();
+    const decodedDn = decodeLdapEscapedDn(dn);
+    const displayName = String(entry.displayName || entry.cn || '');
+    const sAMAccountName = String(entry.sAMAccountName || '');
+    const userPrincipalName = String(entry.userPrincipalName || '');
+    const rawMemberOf = entry.memberOf;
+    let groups: string[] = Array.isArray(rawMemberOf)
+      ? rawMemberOf.map((g) => String(g))
+      : rawMemberOf
+      ? [String(rawMemberOf)]
+      : [];
+
+    console.info(`[LDAP ${requestId}] User DN found: ${dn}`);
+    console.info(`[LDAP ${requestId}] Groups count (direct memberOf): ${groups.length}`);
+
+    // 3. If no memberOf, search groups by member attribute
     if (groups.length === 0) {
       console.info(`[LDAP ${requestId}] memberOf empty, searching groups by member attribute`);
-      const groupsByMember = await withTimeout(findUserGroups(client, LDAP_BASE_DN, dn), 8000, 'findUserGroups');
-      console.info(`[LDAP ${requestId}] Groups found by search: ${groupsByMember.length}`);
-      finalGroups = groupsByMember;
-    }
-    
-    if (finalGroups.length > 0) {
-      console.info(`[LDAP ${requestId}] Groups: ${finalGroups.slice(0, 3).join(', ')}${finalGroups.length > 3 ? '...' : ''}`);
+      const dnCandidates = Array.from(new Set([dn, decodedDn].filter(Boolean)));
+      const memberFilters = dnCandidates.map((d) => `(member=${escapeLDAP(d)})`).join('');
+      const transitiveFilters = dnCandidates
+        .map((d) => `(member:1.2.840.113556.1.4.1941:=${escapeLDAP(d)})`)
+        .join('');
+      try {
+        const { searchEntries: groupEntries } = await client.search(LDAP_BASE_DN, {
+          scope: 'sub',
+          filter: `(&(objectClass=group)(|${memberFilters}${transitiveFilters}))`,
+          attributes: ['dn'],
+        });
+        groups = groupEntries.map((g) => String(g.dn || '').trim()).filter(Boolean);
+        console.info(`[LDAP ${requestId}] Groups found by search: ${groups.length}`);
+      } catch (groupErr) {
+        console.info(
+          `[LDAP ${requestId}] Group search skipped: ${groupErr instanceof Error ? groupErr.message : groupErr}`,
+        );
+      }
     }
 
-    // Déterminer le rôle
+    if (groups.length > 0) {
+      console.info(
+        `[LDAP ${requestId}] Groups: ${groups.slice(0, 3).join(', ')}${groups.length > 3 ? '...' : ''}`,
+      );
+    }
+
+    // 4. Determine role
     const adminGroups = (LDAP_ADMIN_GROUPS || '')
       .split(/[,;|]/)
-      .map((g) => normalizeGroupName(g))
+      .map(normalizeGroupName)
       .filter(Boolean);
 
-    const adminGroupDns = await withTimeout(findGroupDns(client, LDAP_BASE_DN, adminGroups), 8000, 'findGroupDns');
-    let isAdminByChain = false;
-    try {
-      isAdminByChain = await withTimeout(isUserInGroupChain(client, dn, adminGroupDns), 8000, 'isUserInGroupChain');
-    } catch (chainError) {
-      const msg = chainError instanceof Error ? chainError.message : 'CHAIN_CHECK_FAILED';
-      console.info(`[LDAP ${requestId}] Admin chain lookup skipped: ${msg}`);
-      isAdminByChain = false;
-    }
+    const groupNames = groups.map((g) => normalizeGroupName(cnFromDn(g)));
+    const groupsLower = groups.map((g) => normalizeGroupName(g));
 
-    const groupNamesFromFinal = finalGroups.map((g) => normalizeGroupName(cnFromDn(String(g || ''))));
-    const groupsLowerFromFinal = finalGroups.map((g) => normalizeGroupName(String(g || '')));
+    // Check admin via transitive group membership
+    let isAdminByChain = false;
+    if (adminGroups.length > 0) {
+      try {
+        const adminGroupFilters = adminGroups
+          .map(
+            (g) =>
+              `(|(cn=${escapeLDAP(g)})(name=${escapeLDAP(g)})(displayName=${escapeLDAP(g)}))`,
+          )
+          .join('');
+        const { searchEntries: adminGroupEntries } = await client.search(LDAP_BASE_DN, {
+          scope: 'sub',
+          filter: `(&(objectClass=group)(|${adminGroupFilters}))`,
+          attributes: ['dn'],
+        });
+        const adminGroupDns = adminGroupEntries
+          .map((e) => String(e.dn || '').trim())
+          .filter(Boolean);
+
+        if (adminGroupDns.length > 0) {
+          const chainFilters = adminGroupDns
+            .map((d) => `(memberOf:1.2.840.113556.1.4.1941:=${escapeLDAP(d)})`)
+            .join('');
+          const { searchEntries: chainEntries } = await client.search(dn, {
+            scope: 'base',
+            filter: `(|${chainFilters})`,
+            sizeLimit: 1,
+            attributes: ['dn'],
+          });
+          isAdminByChain = chainEntries.length > 0;
+        }
+      } catch (chainErr) {
+        console.info(
+          `[LDAP ${requestId}] Admin chain lookup skipped: ${chainErr instanceof Error ? chainErr.message : chainErr}`,
+        );
+      }
+    }
 
     const isAdmin =
       isAdminByChain ||
-      adminGroups.some((g) => groupNamesFromFinal.includes(g) || groupsLowerFromFinal.some((dnVal) => dnVal.includes(g))) ||
-      groupNamesFromFinal.some((g) => g.includes('domain admins') || g.includes('administrateurs') || g.includes('administrators')) ||
-      groupsLowerFromFinal.some((g) => g.includes('domain admins') || g.includes('administrateurs') || g.includes('administrators')) ||
-      groupsLowerFromFinal.some((g) => g.includes('admin'));
-
-    console.info(`[LDAP ${requestId}] Role determined: ${isAdmin ? 'admin' : 'user'}`);
+      adminGroups.some((g) => groupNames.includes(g) || groupsLower.some((d) => d.includes(g))) ||
+      groupNames.some(
+        (g) =>
+          g.includes('domain admins') ||
+          g.includes('administrateurs') ||
+          g.includes('administrators'),
+      ) ||
+      groupsLower.some(
+        (g) =>
+          g.includes('domain admins') ||
+          g.includes('administrateurs') ||
+          g.includes('administrators'),
+      ) ||
+      groupsLower.some((g) => g.includes('admin'));
 
     let role = 'user';
     if (isAdmin) role = 'admin';
-    else if (groupsLowerFromFinal.some((g) => g.includes('manager'))) role = 'manager';
-    else if (groupsLowerFromFinal.some((g) => g.includes('tech'))) role = 'technician';
+    else if (groupsLower.some((g) => g.includes('manager'))) role = 'manager';
+    else if (groupsLower.some((g) => g.includes('tech'))) role = 'technician';
 
-    // Vérifier le mot de passe en se liant avec l'utilisateur (fallback DN/UPN)
-    const fallbackUpn = sAMAccountName && LDAP_BASE_DN
-      ? `${sAMAccountName}@${domainFromBaseDn(LDAP_BASE_DN)}`
-      : '';
-    const bindCandidates = [decodedDn, dn, userPrincipalName, identifier, fallbackUpn];
+    console.info(`[LDAP ${requestId}] Role determined: ${role}`);
 
-    console.info(`[LDAP ${requestId}] Bind user DN: "${dn}"`);
-    console.info(`[LDAP ${requestId}] Password length: ${password.length}`);
-    const boundPrincipal = await withTimeout(bindUserWithFallback(client, password, bindCandidates, requestId), 8000, 'bindUser');
+    // 5. Verify password by binding as user
+    const fallbackUpn =
+      sAMAccountName && LDAP_BASE_DN
+        ? `${sAMAccountName}@${domainFromBaseDn(LDAP_BASE_DN)}`
+        : '';
+    const bindCandidates = Array.from(
+      new Set([decodedDn, dn, userPrincipalName, identifier, fallbackUpn].filter(Boolean)),
+    );
+
+    let boundPrincipal = '';
+    let lastBindErr: unknown = null;
+    for (const candidate of bindCandidates) {
+      try {
+        console.info(`[LDAP ${requestId}] Bind user principal: "${candidate}"`);
+        await client.bind(candidate, password);
+        boundPrincipal = candidate;
+        break;
+      } catch (bindErr) {
+        lastBindErr = bindErr;
+        const msg = bindErr instanceof Error ? bindErr.message : 'BIND_FAILED';
+        console.info(`[LDAP ${requestId}] Bind failed for "${candidate}": ${msg}`);
+      }
+    }
+
+    if (!boundPrincipal) {
+      throw lastBindErr instanceof Error ? lastBindErr : new Error('INVALID_CREDENTIALS');
+    }
     console.info(`[LDAP ${requestId}] Bind user OK via: "${boundPrincipal}"`);
 
     if (role !== 'admin') {
@@ -382,41 +256,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 6. Build response with cookies (secure: false - HTTP internal network)
     const res = NextResponse.json({ ok: true, user: { dn, displayName, role } });
-    res.cookies.set('mm_auth', '1', {
+    const cookieBase = {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax' as const,
+      secure: false,
       maxAge: 60 * 60 * 8,
       path: '/',
-    });
-    res.cookies.set('mm_user', displayName || identifier, {
-      httpOnly: false,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 60 * 60 * 8,
-      path: '/',
-    });
-    res.cookies.set('mm_role', role, {
-      httpOnly: false,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 60 * 60 * 8,
-      path: '/',
-    });
+    };
+    res.cookies.set('mm_auth', '1', cookieBase);
+    res.cookies.set('mm_user', displayName || identifier, { ...cookieBase, httpOnly: false });
+    res.cookies.set('mm_role', role, { ...cookieBase, httpOnly: false });
 
     captureSecurityEvents.loginSuccess(displayName || identifier, ipSource, {
       provider: 'ldap',
       role,
       requestId,
     });
-
-    // Log pour tous les utilisateurs qui se connectent au dashboard
-    logger.logUser('LOGIN', displayName || identifier, displayName || identifier, 'info', ipSource, {
-      provider: 'ldap',
-      role,
-      requestId,
-    });
+    logger.logUser(
+      'LOGIN',
+      displayName || identifier,
+      displayName || identifier,
+      'info',
+      ipSource,
+      { provider: 'ldap', role, requestId },
+    );
     console.log(`[LOGIN SUCCESS] User: ${displayName || identifier}, Role: ${role}, IP: ${ipSource}`);
     return res;
   } catch (error) {
@@ -432,6 +297,10 @@ export async function POST(req: NextRequest) {
       { status: 401 },
     );
   } finally {
-    unbindSafe(client);
+    try {
+      await client.unbind();
+    } catch {
+      // ignore
+    }
   }
 }
