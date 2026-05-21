@@ -4,5 +4,6 @@ node_modules
 .env.local
 .env*.local
 HA_Monitoring_Local.txt
-HA_Etape2_PostgreSQL_Primaire.txt
+HA_Etape2_PostgreSQL_Primaire.md
 HA_Etape1_ProblèmesEtSolutions.txt
+HA_Etape4_Sauvegarde_ProblèmesEtSolutions.txt
