@@ -245,9 +245,17 @@ const findUserDN = (client: LdapClient, baseDn: string, identifier: string) =>
     });
   });
 
+const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+  Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`TIMEOUT: ${label} exceeded ${ms}ms`)), ms),
+    ),
+  ]);
+
 export async function POST(req: NextRequest) {
   console.log('[LOGIN] POST request received');
-  
+
   if (!LDAP_URL || !LDAP_BASE_DN || !LDAP_BIND_DN || !LDAP_BIND_PASSWORD) {
     console.error('[LOGIN] Missing LDAP configuration');
     return NextResponse.json(
@@ -291,7 +299,7 @@ export async function POST(req: NextRequest) {
 
   try {
     console.info(`[LDAP ${requestId}] Bind service account: ${LDAP_BIND_DN}`);
-    await bindAsync(client, LDAP_BIND_DN, LDAP_BIND_PASSWORD);
+    await withTimeout(bindAsync(client, LDAP_BIND_DN, LDAP_BIND_PASSWORD), 8000, 'service-bind');
     console.info(`[LDAP ${requestId}] Bind service account OK`);
     console.info(`[LDAP ${requestId}] Search user identifier: ${identifier}`);
     const {
@@ -301,15 +309,15 @@ export async function POST(req: NextRequest) {
       groups = [],
       sAMAccountName = '',
       userPrincipalName = '',
-    } = await findUserDN(client, LDAP_BASE_DN, identifier);
+    } = await withTimeout(findUserDN(client, LDAP_BASE_DN, identifier), 8000, 'findUserDN');
     console.info(`[LDAP ${requestId}] User DN found: ${dn}`);
     console.info(`[LDAP ${requestId}] Groups count (direct): ${groups.length}`);
-    
+
     // Try alternative method to fetch groups if memberOf is empty
     let finalGroups = groups;
     if (groups.length === 0) {
       console.info(`[LDAP ${requestId}] memberOf empty, searching groups by member attribute`);
-      const groupsByMember = await findUserGroups(client, LDAP_BASE_DN, dn);
+      const groupsByMember = await withTimeout(findUserGroups(client, LDAP_BASE_DN, dn), 8000, 'findUserGroups');
       console.info(`[LDAP ${requestId}] Groups found by search: ${groupsByMember.length}`);
       finalGroups = groupsByMember;
     }
@@ -324,18 +332,18 @@ export async function POST(req: NextRequest) {
       .map((g) => normalizeGroupName(g))
       .filter(Boolean);
 
-    const adminGroupDns = await findGroupDns(client, LDAP_BASE_DN, adminGroups);
+    const adminGroupDns = await withTimeout(findGroupDns(client, LDAP_BASE_DN, adminGroups), 8000, 'findGroupDns');
     let isAdminByChain = false;
     try {
-      isAdminByChain = await isUserInGroupChain(client, dn, adminGroupDns);
+      isAdminByChain = await withTimeout(isUserInGroupChain(client, dn, adminGroupDns), 8000, 'isUserInGroupChain');
     } catch (chainError) {
       const msg = chainError instanceof Error ? chainError.message : 'CHAIN_CHECK_FAILED';
       console.info(`[LDAP ${requestId}] Admin chain lookup skipped: ${msg}`);
       isAdminByChain = false;
     }
 
-    const groupNamesFromFinal = finalGroups.map((g) => normalizeGroupName(cnFromDn(g)));
-    const groupsLowerFromFinal = finalGroups.map((g) => normalizeGroupName(g));
+    const groupNamesFromFinal = finalGroups.map((g) => normalizeGroupName(cnFromDn(String(g || ''))));
+    const groupsLowerFromFinal = finalGroups.map((g) => normalizeGroupName(String(g || '')));
 
     const isAdmin =
       isAdminByChain ||
@@ -359,7 +367,7 @@ export async function POST(req: NextRequest) {
 
     console.info(`[LDAP ${requestId}] Bind user DN: "${dn}"`);
     console.info(`[LDAP ${requestId}] Password length: ${password.length}`);
-    const boundPrincipal = await bindUserWithFallback(client, password, bindCandidates, requestId);
+    const boundPrincipal = await withTimeout(bindUserWithFallback(client, password, bindCandidates, requestId), 8000, 'bindUser');
     console.info(`[LDAP ${requestId}] Bind user OK via: "${boundPrincipal}"`);
 
     if (role !== 'admin') {
