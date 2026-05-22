@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     const samFilters = localPart
       ? `(sAMAccountName=${safe})(sAMAccountName=${localPart})`
       : `(sAMAccountName=${safe})`;
-    const baseFilter = `(|(${samFilters})(userPrincipalName=${safe})(mail=${safe}))`;
+    const baseFilter = `(|${samFilters}(userPrincipalName=${safe})(mail=${safe}))`;
     const userFilter = LDAP_USER_FILTER
       ? `(&${LDAP_USER_FILTER}${baseFilter})`
       : baseFilter;
