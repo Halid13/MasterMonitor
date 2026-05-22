@@ -3,8 +3,7 @@ services:
     image: mastermonitor:latest
     container_name: mastermonitor-instance1
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    network_mode: host
     env_file:
       - .env.local
     environment:
