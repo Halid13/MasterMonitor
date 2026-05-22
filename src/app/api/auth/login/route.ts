@@ -71,7 +71,8 @@ export async function POST(req: NextRequest) {
   const client = new Client({
     url: LDAP_URL,
     connectTimeout: 5000,
-    tlsOptions: { rejectUnauthorized: false },
+    // tlsOptions uniquement pour ldaps://, pas pour ldap:// (STARTTLS non supporté par cet AD)
+    ...(LDAP_URL.startsWith('ldaps://') ? { tlsOptions: { rejectUnauthorized: false } } : {}),
   });
 
   try {
@@ -300,7 +301,11 @@ export async function POST(req: NextRequest) {
       requestId,
     });
     return NextResponse.json(
-      { ok: false, error: 'Identifiants invalides ou accès refusé.' },
+      {
+        ok: false,
+        error: 'Identifiants invalides ou accès refusé.',
+        ...(process.env.NODE_ENV !== 'production' && { debug: message }),
+      },
       { status: 401 },
     );
   } finally {

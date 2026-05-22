@@ -31,7 +31,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const debug = searchParams.get('debug') === '1';
 
-  const client = new Client({ url: LDAP_URL, connectTimeout: 5000, tlsOptions: { rejectUnauthorized: false } });
+  const client = new Client({ url: LDAP_URL, connectTimeout: 5000, ...(LDAP_URL.startsWith('ldaps://') ? { tlsOptions: { rejectUnauthorized: false } } : {}) });
   try {
     await client.bind(LDAP_BIND_DN, LDAP_BIND_PASSWORD);
 
