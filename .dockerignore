@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.git/
+.env*
+*.tar.gz
+deploy/
+README.md
+*.txt
