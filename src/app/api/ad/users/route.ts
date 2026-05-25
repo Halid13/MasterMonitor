@@ -48,6 +48,16 @@ export async function GET(request: Request) {
       attributes: attrs,
     });
 
+    // Compute domain ONCE here, in handler scope, using the validated LDAP_BASE_DN
+    const adDomain = (LDAP_BASE_DN as string)
+      .split(',')
+      .map((p) => p.trim())
+      .filter((p) => /^dc=/i.test(p))
+      .map((p) => p.split('=').slice(1).join('='))
+      .join('.');
+
+    console.error('[AD-USERS] adDomain computed:', adDomain, '| LDAP_BASE_DN:', LDAP_BASE_DN);
+
     const parseDisplayName = (value: string) => {
       if (!value) return { first: '', last: '' };
       if (value.includes(',')) {
@@ -77,10 +87,16 @@ export async function GET(request: Request) {
       const proxyMail = smtp ? String(smtp).replace(/^smtp:/i, '') : '';
 
       const dn = String(entry.dn || '');
+      const username = String(entry.sAMAccountName || '');
+      const fallbackEmail = username && adDomain ? `${username}@${adDomain}` : '';
+      // ldapts returns [] for absent attributes (truthy!) — normalize to string first
+      const mailVal = Array.isArray(entry.mail) ? String(entry.mail[0] ?? '') : String(entry.mail ?? '');
+      const upnVal = Array.isArray(entry.userPrincipalName) ? String(entry.userPrincipalName[0] ?? '') : String(entry.userPrincipalName ?? '');
+      const emailVal = mailVal || proxyMail || upnVal || fallbackEmail || '';
       return {
         id: String(entry.sAMAccountName || entry.userPrincipalName || entry.mail || dn || ''),
-        username: String(entry.sAMAccountName || ''),
-        email: String(entry.mail || proxyMail || entry.userPrincipalName || ''),
+        username,
+        email: emailVal,
         firstName: givenName || parsed.first || '',
         lastName: sn || parsed.last || '',
         department: String(entry.physicalDeliveryOfficeName || entry.department || ''),

@@ -12,14 +12,21 @@ export async function POST(req: NextRequest) {
   res.cookies.set('mm_auth', '', {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: false,
     maxAge: 0,
     path: '/',
   });
   res.cookies.set('mm_user', '', {
     httpOnly: false,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: false,
+    maxAge: 0,
+    path: '/',
+  });
+  res.cookies.set('mm_role', '', {
+    httpOnly: false,
+    sameSite: 'lax',
+    secure: false,
     maxAge: 0,
     path: '/',
   });
