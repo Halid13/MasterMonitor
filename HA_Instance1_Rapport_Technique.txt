@@ -1,0 +1,516 @@
+================================================================================
+   MASTERMONITOR — INSTANCE 1 : RAPPORT TECHNIQUE COMPLET
+   Déploiement, Intégration et Résolution des Problèmes
+   Rédigé par : Ingénieur Déploiement
+   Date       : Mai 2026
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. OBJECTIF PRINCIPAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MasterMonitor est une application web de supervision informatique développée
+avec Next.js. Elle permet de :
+
+  - Surveiller l'état des serveurs et équipements réseau en temps réel
+  - Gérer les tickets d'incidents
+  - Synchroniser les utilisateurs depuis un Active Directory (AD)
+  - Centraliser les logs système
+  - Consulter les métriques de performance des machines
+
+L'objectif de cette phase était de déployer MasterMonitor sur une première
+machine virtuelle (Instance 1) dans un environnement de production, en
+utilisant Docker comme conteneur d'exécution. Cette instance doit :
+
+  - Être accessible depuis le réseau local de l'entreprise
+  - Se connecter à l'Active Directory pour authentifier les utilisateurs
+  - Se connecter à une base de données PostgreSQL partagée
+  - Démarrer automatiquement au démarrage de la VM
+  - Servir de base pour une future architecture Haute Disponibilité (HA)
+    avec une deuxième instance et un load balancer Nginx
+
+Infrastructure cible :
+  - Instance 1     : VM Debian 12 — IP 192.168.23.153
+  - Active Directory : Windows Server — IP 192.168.23.145 — Port LDAP 389
+  - Base de données : PostgreSQL — IP 192.168.23.147 — Port 5432
+  - Application     : Port 3000
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. ARCHITECTURE TECHNIQUE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Poste de développement (Windows)
+        │
+        │  docker build → docker save → scp
+        ▼
+  VM Instance 1 (Debian 12 — 192.168.23.153)
+        │
+        │  docker load → docker compose up -d
+        ▼
+  Container mastermonitor-instance1
+    ├── Port 3000 (réseau hôte)
+    ├── LDAP → 192.168.23.145:389
+    └── PostgreSQL → 192.168.23.147:5432
+
+Choix techniques :
+  - Next.js en mode "standalone" (output: 'standalone' dans next.config.js)
+    Ce mode génère un serveur Node.js autonome, sans avoir besoin de
+    node_modules complet en production. Idéal pour Docker.
+
+  - Dockerfile multi-stage :
+      Stage 1 (builder) : node:22-alpine → npm ci + next build
+      Stage 2 (runner)  : node:22-alpine → copie uniquement le nécessaire
+    Avantage : image finale légère, sans dépendances de développement.
+
+  - network_mode: host dans docker-compose.yml
+    Le container utilise directement le réseau de la VM hôte, sans bridge.
+    Cela permet au container d'atteindre l'AD (192.168.23.145) et PostgreSQL
+    (192.168.23.147) comme si la VM y accédait directement.
+
+  - Bibliothèque LDAP : ldapts v4.2.6
+    Déclarée dans serverExternalPackages de next.config.js pour éviter
+    qu'elle soit bundlée par webpack (elle doit rester en require natif).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. PROBLÈME N°1 — ACCÈS LDAP BLOQUÉ DEPUIS DOCKER (RÉSEAU BRIDGE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION DU PROBLÈME :
+  Lors des premiers tests de déploiement, le container Docker ne parvenait
+  pas à joindre l'Active Directory. Les connexions LDAP échouaient avec des
+  erreurs de timeout ou de connexion refusée.
+
+CAUSE TECHNIQUE :
+  Par défaut, Docker utilise un réseau "bridge" interne (172.17.0.x).
+  Les paquets réseau sortants du container arrivent sur le réseau de
+  l'entreprise avec l'adresse IP du bridge Docker (172.17.0.x) au lieu
+  de l'IP de la VM (192.168.23.153).
+
+  Le contrôleur de domaine Windows (Active Directory) ou le pare-feu
+  intermédiaire rejetait ces connexions car l'IP source 172.17.0.x n'est
+  pas une adresse connue/autorisée sur le réseau de l'entreprise.
+
+RÉSOLUTION :
+  Utilisation de network_mode: host dans docker-compose.yml.
+
+  Avec ce mode, le container partage exactement l'interface réseau de la
+  VM hôte. Les connexions LDAP partent donc avec l'IP 192.168.23.153,
+  qui est reconnue sur le réseau de l'entreprise.
+
+  docker-compose.yml (extrait) :
+  ┌─────────────────────────────────────────────────────────┐
+  │  services:                                              │
+  │    mastermonitor:                                       │
+  │      image: mastermonitor:latest                        │
+  │      network_mode: host          ← ajout clé            │
+  │      env_file: .env.local                               │
+  │      environment:                                       │
+  │        NODE_ENV: production                             │
+  │        PORT: "3000"                                     │
+  │        HOSTNAME: "0.0.0.0"                              │
+  └─────────────────────────────────────────────────────────┘
+
+LEÇON RETENUE :
+  Dans un environnement Active Directory, le mode réseau bridge de Docker
+  est problématique. network_mode: host est souvent nécessaire quand
+  l'application doit communiquer avec des serveurs d'infrastructure
+  d'entreprise (AD, imprimantes, équipements réseau, etc.).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. PROBLÈME N°2 — LDAPS (TLS) NON SUPPORTÉ, UTILISATION DE LDAP SIMPLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION DU PROBLÈME :
+  La bibliothèque ldapts tentait parfois d'appliquer des options TLS même
+  sur une connexion LDAP non chiffrée (ldap:// au lieu de ldaps://).
+  Cela provoquait des erreurs de connexion.
+
+CAUSE TECHNIQUE :
+  Le code original passait des tlsOptions à la bibliothèque ldapts sans
+  vérifier si la connexion était bien en LDAPS. Passer des options TLS
+  sur une connexion LDAP simple (port 389) cause une erreur de protocole.
+
+RÉSOLUTION :
+  Ajout d'une vérification conditionnelle : les tlsOptions ne sont passés
+  que si l'URL commence par "ldaps://".
+
+  Code corrigé (extrait) :
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  const client = new Client({                                        │
+  │    url: LDAP_URL,                                                   │
+  │    connectTimeout: 5000,                                            │
+  │    ...(LDAP_URL.startsWith('ldaps://')                              │
+  │      ? { tlsOptions: { rejectUnauthorized: false } }                │
+  │      : {}),                                                         │
+  │  });                                                                │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  Configuration .env.local utilisée :
+    LDAP_URL=ldap://192.168.23.145:389   ← LDAP simple, pas LDAPS
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. PROBLÈME N°3 — DÉPENDANCES LDAPTS ABSENTES DANS L'IMAGE DOCKER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION DU PROBLÈME :
+  Après le premier build Docker réussi, le container démarrait mais toutes
+  les routes LDAP échouaient avec des erreurs "Cannot find module 'ldapts'"
+  ou des erreurs similaires sur ses dépendances (asn1, debug, uuid...).
+
+CAUSE TECHNIQUE :
+  Next.js en mode standalone copie automatiquement les node_modules
+  nécessaires. Mais les packages déclarés dans serverExternalPackages
+  (comme ldapts) sont explicitement exclus du bundle webpack — ils doivent
+  être disponibles en tant que modules Node.js natifs au moment de
+  l'exécution. Or, le mode standalone ne les copie pas automatiquement
+  car il considère qu'ils seront fournis par l'environnement.
+
+RÉSOLUTION :
+  Copie manuelle explicite de ldapts et de toutes ses dépendances
+  transitives dans le Dockerfile, depuis le stage builder vers le runner :
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  # Dans le stage runner du Dockerfile :                             │
+  │  COPY --from=builder /app/node_modules/ldapts       ./node_modules/ldapts
+  │  COPY --from=builder /app/node_modules/asn1         ./node_modules/asn1
+  │  COPY --from=builder /app/node_modules/debug        ./node_modules/debug
+  │  COPY --from=builder /app/node_modules/ms           ./node_modules/ms
+  │  COPY --from=builder /app/node_modules/uuid         ./node_modules/uuid
+  │  COPY --from=builder /app/node_modules/strict-event-emitter-types \
+  │                                    ./node_modules/strict-event-emitter-types
+  └─────────────────────────────────────────────────────────────────────┘
+
+  Comment identifier les dépendances transitives manquantes :
+    1. Démarrer le container
+    2. Faire une requête LDAP
+    3. Lire docker logs mastermonitor-instance1
+    4. Chaque erreur "Cannot find module 'xxx'" indique un module à ajouter
+
+LEÇON RETENUE :
+  Tout package déclaré dans serverExternalPackages de next.config.js doit
+  être copié manuellement dans le Dockerfile. Ce n'est pas automatique.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. PROBLÈME N°4 — TRANSFERT DE L'IMAGE DOCKER VERS LA VM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION DU PROBLÈME :
+  La VM de production n'a pas accès au Docker Hub ni à un registry privé.
+  Il fallait transférer l'image Docker construite sur le poste Windows
+  vers la VM de production sur le réseau local.
+
+MÉTHODE RETENUE :
+  Transfert par fichier .tar via SCP (Secure Copy Protocol) :
+
+  Étape 1 — Sur Windows (poste de développement) :
+    Construire l'image :
+      docker build -t mastermonitor:latest .
+
+    Exporter l'image en fichier .tar :
+      docker save -o mastermonitor.tar mastermonitor:latest
+      (Note : sur Windows PowerShell, ne pas utiliser | gzip car la
+       compression pipe casse le fichier. Utiliser docker save -o.)
+
+    Transférer vers la VM :
+      scp mastermonitor.tar app1@192.168.23.153:~/mastermonitor/
+
+  Étape 2 — Sur la VM (Debian 12) :
+    Charger l'image dans Docker :
+      docker load -i mastermonitor.tar
+
+    Démarrer/Redémarrer le container :
+      docker compose down && docker compose up -d
+
+    Nettoyer le fichier .tar (lourd, ~78 Mo) :
+      rm mastermonitor.tar
+
+LEÇON RETENUE :
+  La méthode docker save + scp + docker load est parfaitement viable pour
+  des déploiements sur réseau local sans registry. Le fichier .tar pèse
+  environ 78 Mo pour cette application.
+
+  Commande tout-en-un depuis Windows :
+    docker build -t mastermonitor:latest . ; docker save -o mastermonitor.tar mastermonitor:latest ; scp mastermonitor.tar app1@192.168.23.153:~/mastermonitor/
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. PROBLÈME N°5 — DÉCONNEXION (LOGOUT) NE FONCTIONNAIT PAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION DU PROBLÈME :
+  Après déploiement sur la VM, la connexion (login) fonctionnait
+  correctement. En revanche, la déconnexion (logout) ne fonctionnait pas :
+  l'utilisateur restait connecté même après avoir cliqué sur "Déconnexion".
+
+SYMPTÔME OBSERVABLE :
+  Après le logout, le navigateur redirigeait vers la page de login mais
+  revenait immédiatement au dashboard. Les cookies de session n'étaient
+  pas effacés.
+
+INVESTIGATION :
+  Analyse du fichier src/app/api/auth/logout/route.ts.
+  Le logout efface les cookies de session en les remettant à vide avec
+  maxAge: 0. Mais les navigateurs ont une règle de sécurité : un cookie
+  défini avec secure: false ne peut être effacé que par un Set-Cookie
+  avec le même attribut secure: false.
+
+  Le problème : lors du login, les cookies étaient créés avec secure: false
+  (car l'application tourne en HTTP, pas HTTPS sur le réseau local).
+  Mais lors du logout, le code utilisait :
+    secure: process.env.NODE_ENV === 'production'
+  En production Docker, NODE_ENV = 'production', donc secure devenait true.
+  Le navigateur recevait un ordre d'effacement avec secure: true mais le
+  cookie existant avait été créé avec secure: false → refus silencieux.
+
+  De plus, un troisième cookie (mm_role) n'était pas effacé du tout dans
+  le logout original, laissant des informations de session actives.
+
+RÉSOLUTION :
+  Modification de src/app/api/auth/logout/route.ts pour forcer
+  secure: false sur tous les cookies à effacer, et ajout du cookie mm_role :
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  res.cookies.set('mm_auth', '', {                                   │
+  │    httpOnly: true, sameSite: 'lax', secure: false,                  │
+  │    maxAge: 0, path: '/',                                            │
+  │  });                                                                │
+  │  res.cookies.set('mm_user', '', {                                   │
+  │    httpOnly: false, sameSite: 'lax', secure: false,                 │
+  │    maxAge: 0, path: '/',                                            │
+  │  });                                                                │
+  │  res.cookies.set('mm_role', '', {          ← ajouté                 │
+  │    httpOnly: false, sameSite: 'lax', secure: false,                 │
+  │    maxAge: 0, path: '/',                                            │
+  │  });                                                                │
+  └─────────────────────────────────────────────────────────────────────┘
+
+RÈGLE GÉNÉRALE :
+  Les attributs d'un cookie lors de sa suppression (maxAge: 0) doivent
+  être identiques à ceux utilisés lors de sa création. Si le cookie a été
+  créé avec secure: false, il doit être effacé avec secure: false.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. PROBLÈME N°6 — CHAMP EMAIL VIDE POUR TOUS LES UTILISATEURS AD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION DU PROBLÈME :
+  L'API /api/ad/users retournait tous les utilisateurs AD correctement
+  (nom, prénom, groupes, statut...) SAUF le champ email qui était toujours
+  vide ("") pour chaque utilisateur.
+
+  Cela bloquait le projet helpdeskportal (un autre projet qui appelle
+  cette API pour vérifier les emails des utilisateurs lors de la connexion).
+
+CONTEXTE ACTIVE DIRECTORY :
+  Dans cet environnement, aucun utilisateur Active Directory n'a l'attribut
+  "mail" configuré dans l'AD. Les comptes n'ont pas non plus de UPN
+  (User Principal Name) défini. C'est une configuration AD basique,
+  sans Exchange ni messagerie intégrée.
+
+  Utilisateurs présents dans l'AD :
+    Administrateur, Invité, krbtgt, svc-ldap,
+    mohamed.onifade, maohamed.sarr, abdoul.amadou
+  Domaine AD : monitor.local
+  Base DN    : dc=monitor,dc=local
+
+OBJECTIF :
+  Puisque l'attribut "mail" n'existe pas dans l'AD, générer un email
+  de secours (fallback) au format : sAMAccountName@monitor.local
+  Exemple : Administrateur@monitor.local, mohamed.onifade@monitor.local
+
+━━━ TENTATIVES ÉCHOUÉES (diagnostic progressif) ━━━
+
+  Tentative 1 :
+    Appel d'une fonction domainFromBaseDn(LDAP_BASE_DN) à l'intérieur
+    du .map() sur les entrées LDAP.
+    Résultat : email toujours vide.
+    Hypothèse : problème d'accès à la variable dans le callback.
+
+  Tentative 2 :
+    Remplacement par domainFromBaseDn(process.env.LDAP_BASE_DN || LDAP_BASE_DN)
+    dans le .map().
+    Résultat : email toujours vide.
+    Hypothèse : Next.js inline les process.env à la compilation.
+
+  Tentative 3 :
+    Extraction du domaine depuis le DN de l'entrée LDAP elle-même
+    (entry.dn qui contient "CN=Administrateur,CN=Users,DC=monitor,DC=local").
+    Résultat : email toujours vide.
+    Hypothèse : format du DN inattendu.
+
+  Tentative 4 :
+    Utilisation d'une regex /DC=([^,]+)/gi sur le DN de l'entrée.
+    Résultat : email toujours vide.
+
+  À ce stade, le domaine était introuvable malgré des approches variées.
+  Ajout d'un log console.error pour diagnostiquer en production :
+    console.error('[AD-USERS] adDomain computed:', adDomain, '| LDAP_BASE_DN:', LDAP_BASE_DN)
+
+  Résultat du log après déploiement :
+    [AD-USERS] adDomain computed: monitor.local | LDAP_BASE_DN: dc=monitor,dc=local
+
+  Surprise : le domaine "monitor.local" était correctement calculé !
+  Le problème était donc ailleurs dans la chaîne de construction de l'email.
+
+━━━ CAUSE RACINE IDENTIFIÉE ━━━
+
+  Analyse du code :
+    email: String(entry.mail || proxyMail || entry.userPrincipalName || fallbackEmail || '')
+
+  La variable fallbackEmail était correcte : "Administrateur@monitor.local"
+  Mais entry.mail l'empêchait d'être atteinte.
+
+  En JavaScript, la logique || s'arrête à la première valeur "truthy".
+  Or, la bibliothèque ldapts v4 retourne un TABLEAU VIDE [] pour les
+  attributs LDAP demandés mais absents sur l'objet AD.
+
+  Comportement JavaScript :
+    [] est TRUTHY  (un tableau, même vide, est toujours truthy)
+    String([]) = '' (la conversion en string d'un tableau vide = chaîne vide)
+
+  Donc :
+    entry.mail            = []                  ← truthy !
+    entry.mail || ...     = []                  ← la chaîne s'arrête ici
+    String([])            = ''                  ← email vide
+
+  fallbackEmail n'était JAMAIS évalué car entry.mail = [] bloquait tout.
+
+  Note : le même problème existait potentiellement pour entry.userPrincipalName.
+  D'ailleurs, le code gérait déjà ce cas pour proxyAddresses :
+    const rawProxy = entry.proxyAddresses;
+    const proxyAddresses = Array.isArray(rawProxy) ? rawProxy : ...
+  Ce traitement explicite Array.isArray existait pour proxyAddresses mais
+  avait été omis pour mail et userPrincipalName.
+
+━━━ RÉSOLUTION FINALE ━━━
+
+  Normalisation de entry.mail et entry.userPrincipalName avant utilisation :
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  // ldapts retourne [] pour les attributs absents (truthy !)        │
+  │  // Il faut normaliser avant d'utiliser dans une chaîne ||          │
+  │  const mailVal = Array.isArray(entry.mail)                          │
+  │    ? String(entry.mail[0] ?? '')                                    │
+  │    : String(entry.mail ?? '');                                      │
+  │                                                                     │
+  │  const upnVal = Array.isArray(entry.userPrincipalName)              │
+  │    ? String(entry.userPrincipalName[0] ?? '')                       │
+  │    : String(entry.userPrincipalName ?? '');                         │
+  │                                                                     │
+  │  const emailVal = mailVal || proxyMail || upnVal || fallbackEmail;  │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  Résultat après déploiement :
+    Administrateur  -> Administrateur@monitor.local
+    Invité          -> Invité@monitor.local
+    krbtgt          -> krbtgt@monitor.local
+    svc-ldap        -> svc-ldap@monitor.local
+    mohamed.onifade -> mohamed.onifade@monitor.local
+    maohamed.sarr   -> maohamed.sarr@monitor.local
+    abdoul.amadou   -> abdoul.amadou@monitor.local
+
+LEÇON RETENUE :
+  Toujours vérifier le type réel retourné par une bibliothèque LDAP.
+  ldapts v4 retourne [] (et non undefined) pour les attributs absents.
+  Un tableau vide [] est truthy en JavaScript et String([]) donne ''.
+  Il faut systématiquement normaliser les attributs LDAP avec Array.isArray()
+  avant de les utiliser dans des expressions de type (a || b || c).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. CONFIGURATION FINALE DE L'INSTANCE 1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Fichiers présents sur la VM dans ~/mastermonitor/ :
+
+  docker-compose.yml :
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  services:                                                          │
+  │    mastermonitor:                                                   │
+  │      image: mastermonitor:latest                                    │
+  │      container_name: mastermonitor-instance1                        │
+  │      restart: unless-stopped                                        │
+  │      network_mode: host                                             │
+  │      env_file: .env.local                                           │
+  │      environment:                                                   │
+  │        NODE_ENV: production                                         │
+  │        PORT: "3000"                                                 │
+  │        HOSTNAME: "0.0.0.0"                                          │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  .env.local :
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  LDAP_URL=ldap://192.168.23.145:389                                 │
+  │  LDAP_BASE_DN=dc=monitor,dc=local                                   │
+  │  LDAP_BIND_DN=cn=svc-ldap,cn=Users,dc=monitor,dc=local             │
+  │  LDAP_BIND_PASSWORD=Azerty1234@                                     │
+  │  LDAP_USER_FILTER=(&(objectCategory=person)(objectClass=user))      │
+  │  LDAP_ADMIN_GROUPS=Administrateurs;Admins du domaine;...            │
+  │  DATABASE_URL=postgresql://mm_app:***@192.168.23.147:5432/mastermonitor
+  └─────────────────────────────────────────────────────────────────────┘
+
+Démarrage automatique :
+  - Docker CE est activé via systemd (systemctl is-enabled docker → enabled)
+  - restart: unless-stopped garantit le redémarrage du container au boot
+  - Exception : si le container a été arrêté manuellement (docker compose down),
+    il ne redémarre pas automatiquement → relancer avec docker compose up -d
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. COMMANDES DE MAINTENANCE (RÉFÉRENCE RAPIDE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Déployer une nouvelle version (depuis Windows) :
+    docker build -t mastermonitor:latest .
+    docker save -o mastermonitor.tar mastermonitor:latest
+    scp mastermonitor.tar app1@192.168.23.153:~/mastermonitor/
+
+  Charger et redémarrer (sur la VM) :
+    cd ~/mastermonitor
+    docker load -i mastermonitor.tar
+    docker compose down && docker compose up -d
+    rm mastermonitor.tar
+
+  Voir les logs en temps réel (sur la VM) :
+    docker logs -f mastermonitor-instance1
+
+  Voir les logs d'erreur uniquement :
+    docker logs mastermonitor-instance1 2>&1 | grep -i error
+
+  Vérifier l'état du container :
+    docker ps
+
+  Tester l'API depuis la VM :
+    curl -s http://localhost:3000/api/ad/users | python3 -m json.tool
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+11. ÉTAT FINAL ET PROCHAINES ÉTAPES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ✔ Instance 1 déployée et opérationnelle sur 192.168.23.153:3000
+  ✔ Login AD fonctionnel
+  ✔ Logout fonctionnel (cookies effacés correctement)
+  ✔ API /api/ad/users retourne les emails au format sAMAccountName@monitor.local
+  ✔ Démarrage automatique au boot de la VM
+  ✔ Connexion PostgreSQL fonctionnelle
+
+  Prochaines étapes planifiées :
+  ┌────────────────────────────────────────────────────────────────────┐
+  │  [ ] Instance 2 : même déploiement sur une deuxième VM             │
+  │  [ ] Nginx Load Balancer : répartition de charge entre les deux    │
+  │      instances (round-robin sur le port 80)                        │
+  │  [ ] Helpdeskportal : validation finale de l'intégration avec      │
+  │      l'API /api/ad/users et les emails générés                     │
+  └────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+  FIN DU DOCUMENT
+================================================================================

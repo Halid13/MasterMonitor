@@ -4,6 +4,9 @@ services:
     container_name: mastermonitor-instance1
     restart: unless-stopped
     network_mode: host
+    user: "0"
+    cap_add:
+      - NET_RAW
     env_file:
       - .env.local
     environment:

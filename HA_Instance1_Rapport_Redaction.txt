@@ -1,0 +1,280 @@
+================================================================================
+   MASTERMONITOR — INSTANCE 1
+   Rapport technique de déploiement et d'intégration
+   Rédigé par : Ingénieur Déploiement
+   Date       : Mai 2026
+================================================================================
+
+
+INTRODUCTION
+────────────
+
+MasterMonitor est une application web de supervision informatique développée
+avec le framework Next.js. Elle a pour vocation de centraliser la gestion du
+parc informatique d'une organisation : surveillance en temps réel des serveurs
+et équipements réseau, gestion des tickets d'incidents, synchronisation des
+comptes utilisateurs depuis un Active Directory, consultation des métriques de
+performance et centralisation des logs système.
+
+Ce rapport documente l'ensemble du travail réalisé pour déployer la première
+instance de MasterMonitor en production, sur une machine virtuelle Debian 12
+(adresse IP 192.168.23.153), en utilisant Docker comme environnement
+d'exécution. Il décrit l'infrastructure mise en place, les problèmes techniques
+rencontrés et les solutions apportées, dans l'ordre chronologique des travaux.
+
+
+1. OBJECTIF ET INFRASTRUCTURE CIBLE
+────────────────────────────────────
+
+L'objectif de cette phase était de rendre MasterMonitor accessible sur le
+réseau local de l'entreprise, depuis une machine virtuelle stable, capable
+de se connecter à l'Active Directory pour authentifier les utilisateurs et
+de dialoguer avec une base de données PostgreSQL partagée. L'instance devait
+également démarrer automatiquement au démarrage de la VM, sans intervention
+humaine.
+
+Cette première instance s'inscrit dans un projet plus large de haute
+disponibilité : à terme, une deuxième instance identique sera déployée sur
+une autre VM, et un load balancer Nginx répartira la charge entre les deux.
+L'Instance 1 constitue donc la fondation de toute cette architecture.
+
+L'infrastructure sur laquelle s'appuie l'application est la suivante :
+le contrôleur de domaine Active Directory est hébergé sur le serveur
+192.168.23.145, accessible via le protocole LDAP sur le port 389. La base
+de données PostgreSQL est disponible sur le serveur 192.168.23.147, port 5432.
+L'application elle-même est exposée sur le port 3000 de la VM de production.
+
+Du point de vue technique, deux choix architecturaux ont guidé l'ensemble du
+déploiement. D'abord, Next.js a été configuré en mode "standalone", qui génère
+un serveur Node.js entièrement autonome lors du build : il n'a besoin d'aucune
+dépendance extérieure pour fonctionner, ce qui en fait un candidat idéal pour
+une image Docker légère. Ensuite, la construction de l'image Docker suit un
+processus en deux étapes, appelé "multi-stage build" : une première étape
+compile l'application (avec tous les outils de build), et une seconde étape
+assemble l'image finale à partir uniquement des fichiers nécessaires à
+l'exécution. Le résultat est une image de production propre, sans les
+centaines de mégaoctets de dépendances de développement.
+
+
+2. PREMIER PROBLÈME : L'ACCÈS AU RÉSEAU DE L'ENTREPRISE DEPUIS DOCKER
+───────────────────────────────────────────────────────────────────────
+
+Le premier obstacle rencontré fut de nature réseau. Lors des premiers tests,
+le container Docker ne parvenait pas à contacter le serveur Active Directory.
+Toutes les tentatives de connexion LDAP échouaient avec des erreurs de timeout.
+
+Pour comprendre ce problème, il faut savoir comment Docker gère le réseau par
+défaut. Quand un container démarre, Docker lui crée une interface réseau
+virtuelle dans un sous-réseau privé (typiquement 172.17.0.x). Les paquets
+réseau sortant du container arrivent donc sur le réseau de l'entreprise avec
+cette adresse IP virtuelle comme adresse source, et non avec l'adresse réelle
+de la VM (192.168.23.153). Le contrôleur de domaine Windows, voyant arriver
+une connexion depuis une adresse 172.17.x.x qu'il ne reconnaît pas, la rejette.
+
+La solution a été d'utiliser l'option network_mode: host dans le fichier
+docker-compose.yml. Avec ce paramètre, le container ne crée plus d'interface
+réseau virtuelle : il partage directement l'interface réseau de la VM hôte.
+Ainsi, toutes les connexions sortantes (vers l'AD, vers PostgreSQL) utilisent
+l'adresse 192.168.23.153, qui est parfaitement connue et autorisée sur le
+réseau de l'entreprise. Dès l'application de ce changement, les connexions
+LDAP ont fonctionné.
+
+Cette situation illustre un point important : dans un environnement
+d'entreprise avec un Active Directory, le mode réseau bridge de Docker est
+souvent insuffisant. Le mode host est généralement nécessaire pour toute
+application qui doit dialoguer avec des serveurs d'infrastructure interne.
+
+
+3. DEUXIÈME PROBLÈME : LES OPTIONS TLS APPLIQUÉES À MAUVAIS ESCIENT
+────────────────────────────────────────────────────────────────────
+
+Un problème plus subtil concernait la bibliothèque LDAP utilisée par
+l'application (ldapts v4). Le code original passait systématiquement des
+options de chiffrement TLS à la bibliothèque, quel que soit le type de
+connexion demandé. Or, l'AD de cet environnement utilise le protocole LDAP
+simple (ldap://, port 389) et non LDAPS (ldap sécurisé par TLS, port 636).
+Appliquer des options TLS à une connexion LDAP non chiffrée provoque une
+erreur de protocole.
+
+La correction a consisté à rendre ce paramètre conditionnel : les options TLS
+ne sont désormais transmises à la bibliothèque que si l'URL de connexion
+commence par "ldaps://". Dans le cas présent, l'URL est
+"ldap://192.168.23.145:389", donc aucune option TLS n'est appliquée, et la
+connexion s'établit normalement.
+
+
+4. TROISIÈME PROBLÈME : DES DÉPENDANCES MANQUANTES DANS L'IMAGE DOCKER
+────────────────────────────────────────────────────────────────────────
+
+Après avoir résolu les problèmes réseau, le container démarrait mais toutes
+les fonctionnalités liées à l'Active Directory échouaient avec des erreurs
+du type "Cannot find module 'ldapts'". Le module était pourtant bien installé
+lors du build.
+
+Ce problème vient d'une interaction entre Next.js et Docker. La bibliothèque
+ldapts est déclarée dans la configuration de Next.js comme un "package externe
+au serveur" (serverExternalPackages). Cela signifie que webpack, le bundler
+de Next.js, ne l'intègre pas dans le bundle compilé — il la laisse en tant
+que module Node.js natif, à charger dynamiquement au moment de l'exécution.
+Le problème est que le mode standalone de Next.js, qui copie automatiquement
+les dépendances nécessaires, ne copie pas les packages externes de cette
+liste. Il suppose qu'ils seront fournis par l'environnement.
+
+La solution a donc été de copier manuellement ldapts et toutes ses dépendances
+transitives dans le Dockerfile, depuis l'étape de build vers l'image finale.
+Pour identifier toutes les dépendances manquantes, la méthode utilisée a été
+itérative : démarrer le container, déclencher une requête LDAP, lire les logs
+avec "docker logs", noter le nom du module manquant, l'ajouter au Dockerfile,
+et recommencer. Au final, six modules ont dû être ajoutés manuellement :
+ldapts lui-même, ainsi que asn1, debug, ms, uuid et strict-event-emitter-types
+qui sont ses dépendances internes.
+
+Ceci est un point de vigilance important pour tout futur développeur travaillant
+sur ce projet : tout package ajouté à serverExternalPackages dans next.config.js
+doit être copié explicitement dans le Dockerfile.
+
+
+5. QUATRIÈME PROBLÈME : COMMENT TRANSFÉRER L'IMAGE DOCKER VERS LA VM
+──────────────────────────────────────────────────────────────────────
+
+La VM de production n'ayant pas accès à Internet ni à un registry Docker
+privé, il a fallu trouver une méthode pour transférer l'image construite sur
+le poste de développement Windows vers la VM.
+
+La solution retenue est le transfert par fichier via SCP (Secure Copy Protocol).
+Le processus se déroule en trois temps. D'abord, l'image est construite
+localement avec "docker build". Ensuite, elle est exportée dans un fichier
+d'archive .tar avec "docker save". Ce fichier est ensuite copié sur la VM via
+SCP. Enfin, sur la VM, l'archive est chargée dans le daemon Docker local avec
+"docker load", ce qui la rend disponible pour docker compose.
+
+Un point technique à noter pour les utilisateurs Windows : la commande
+"docker save" doit impérativement utiliser le paramètre "-o" pour écrire dans
+un fichier (et non une redirection pipe vers gzip), car sous PowerShell la
+compression en pipe corrompt le fichier .tar. L'image finale pèse environ
+78 Mo, ce qui permet un transfert rapide sur un réseau local.
+
+
+6. CINQUIÈME PROBLÈME : LA DÉCONNEXION NE FONCTIONNAIT PAS
+────────────────────────────────────────────────────────────
+
+Une fois le déploiement fonctionnel, les tests d'usage ont révélé que la
+déconnexion ne fonctionnait pas. Après avoir cliqué sur "Déconnexion",
+l'utilisateur était redirigé vers la page de login mais se retrouvait
+immédiatement renvoyé vers le tableau de bord : les cookies de session
+n'avaient pas été effacés.
+
+Ce comportement est lié à une règle de sécurité stricte appliquée par les
+navigateurs sur la gestion des cookies. Pour effacer un cookie, un serveur
+envoie un header Set-Cookie avec une valeur vide et une date d'expiration
+passée. Mais le navigateur n'accepte cet effacement que si les attributs du
+cookie (notamment l'attribut "secure") correspondent exactement à ceux avec
+lesquels le cookie a été créé.
+
+Lors de la connexion, les cookies de session étaient créés avec l'attribut
+"secure: false" (adapté à HTTP, pas à HTTPS). Mais lors de la déconnexion,
+le code calculait dynamiquement l'attribut secure en fonction de
+l'environnement : en production (NODE_ENV=production), il passait à
+"secure: true". Le navigateur recevait donc un ordre d'effacement avec
+secure: true pour des cookies créés avec secure: false, et l'ignorait
+silencieusement — d'où la persistance de la session.
+
+De plus, un troisième cookie (mm_role, qui stocke le rôle de l'utilisateur)
+n'était tout simplement pas effacé du tout dans le code de déconnexion
+original. Il suffisait donc pour le navigateur de conserver ce cookie pour
+maintenir des informations de session actives.
+
+La correction a été directe : le code de déconnexion a été modifié pour forcer
+"secure: false" sur les trois cookies à effacer (mm_auth, mm_user, mm_role),
+alignant ainsi exactement leurs attributs sur ceux utilisés lors de la
+création. La déconnexion a fonctionné immédiatement après cette correction.
+
+
+7. SIXIÈME PROBLÈME : LE CHAMP EMAIL TOUJOURS VIDE POUR LES UTILISATEURS AD
+─────────────────────────────────────────────────────────────────────────────
+
+Ce dernier problème, et le plus complexe à diagnostiquer, concernait l'API
+qui retourne la liste des utilisateurs Active Directory (/api/ad/users).
+Tous les champs étaient correctement remplis (nom, prénom, groupes, statut
+actif ou non) à l'exception du champ email, qui était systématiquement vide.
+Cela bloquait l'intégration avec le projet helpdeskportal, qui utilise cette
+API pour vérifier l'identité des utilisateurs lors de leur connexion.
+
+La raison fondamentale est que cet Active Directory n'a pas d'attribut "mail"
+configuré sur les comptes utilisateurs. Il n'y a pas de serveur Exchange ni
+de messagerie intégrée. Les User Principal Names (UPN) ne sont pas non plus
+définis. Face à cette situation, la solution envisagée était de générer un
+email de substitution automatiquement, en combinant le nom de compte
+(sAMAccountName) avec le domaine AD : par exemple, "Administrateur" devenait
+"Administrateur@monitor.local".
+
+Le problème a nécessité plusieurs cycles de diagnostic car le symptôme était
+trompeur : malgré un code apparemment correct, l'email restait vide. Quatre
+approches différentes ont été tentées pour extraire le nom de domaine depuis
+la variable d'environnement LDAP_BASE_DN (qui contient "dc=monitor,dc=local"),
+sans succès visible.
+
+Le déclic est venu de l'ajout d'un log de débogage dans le code de production.
+Grâce à la configuration de Next.js qui conserve les console.error en
+production, le message suivant est apparu dans les logs du container après
+déploiement : "[AD-USERS] adDomain computed: monitor.local | LDAP_BASE_DN:
+dc=monitor,dc=local". Le domaine était donc correctement calculé. Le problème
+se trouvait ailleurs.
+
+En relisant attentivement le code de construction de l'email, la cause racine
+a été identifiée. Le code utilisait une chaîne logique de la forme :
+
+    email = entry.mail OU proxyMail OU entry.userPrincipalName OU fallbackEmail
+
+En JavaScript, cette expression évalue chaque terme de gauche à droite et
+s'arrête au premier terme "truthy" (non vide, non nul). Or, la bibliothèque
+ldapts v4 présente un comportement particulier : lorsqu'un attribut LDAP est
+explicitement demandé dans la requête de recherche mais qu'il n'existe pas sur
+l'objet AD retourné, la bibliothèque retourne un tableau vide ([]) plutôt
+qu'une valeur undefined ou null.
+
+Le piège est ici subtil : en JavaScript, un tableau vide [] est considéré
+comme "truthy". L'expression [] || "autre valeur" retourne donc [] et non
+"autre valeur". Et la conversion String([]) donne une chaîne vide "". Ainsi,
+entry.mail valait [], ce qui était truthy, ce qui court-circuitait toute la
+chaîne — le fallbackEmail n'était jamais atteint, et String([]) donnait "".
+
+Ce comportement de ldapts était d'ailleurs partiellement connu du développeur
+original, car l'attribut proxyAddresses bénéficiait déjà d'un traitement
+spécifique avec Array.isArray(). Mais ce même traitement n'avait pas été
+appliqué aux attributs mail et userPrincipalName.
+
+La correction a consisté à normaliser ces deux attributs avant de les utiliser
+dans la chaîne logique : si la valeur retournée est un tableau, on prend son
+premier élément (ou une chaîne vide si le tableau est vide) ; sinon on
+effectue la conversion en chaîne habituelle. Cette normalisation garantit
+qu'un tableau vide [] donne bien une chaîne vide "", qui est falsy, et permet
+à la chaîne logique de continuer jusqu'au fallbackEmail.
+
+Après ce correctif et redéploiement sur la VM, les sept utilisateurs AD ont
+été retournés avec leurs emails correctement générés au format
+sAMAccountName@monitor.local.
+
+
+CONCLUSION
+──────────
+
+Le déploiement de l'Instance 1 de MasterMonitor a été l'occasion de résoudre
+six problèmes techniques distincts, couvrant des domaines variés : réseau
+Docker en environnement d'entreprise, gestion des dépendances dans une image
+standalone, sécurité des cookies HTTP, et comportement interne d'une
+bibliothèque LDAP tierce.
+
+Chaque problème, pris isolément, pouvait sembler mineur. Mais c'est leur
+accumulation qui rendait l'intégration bloquée à chaque étape. La méthode
+qui a permis d'avancer a toujours été la même : observer le comportement
+réel (logs, réponses API, comportement du navigateur), formuler une hypothèse
+précise sur la cause, appliquer une correction ciblée, puis valider.
+
+L'Instance 1 est désormais pleinement opérationnelle, stable, et prête à
+servir de modèle pour le déploiement de l'Instance 2 dans le cadre de
+l'architecture de haute disponibilité planifiée.
+
+================================================================================
+   FIN DU RAPPORT
+================================================================================

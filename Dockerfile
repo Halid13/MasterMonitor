@@ -41,8 +41,6 @@ COPY --from=builder /app/node_modules/ms                        ./node_modules/m
 COPY --from=builder /app/node_modules/uuid                      ./node_modules/uuid
 COPY --from=builder /app/node_modules/strict-event-emitter-types ./node_modules/strict-event-emitter-types
 
-USER nextjs
-
 EXPOSE 3000
 
 CMD ["node", "server.js"]
