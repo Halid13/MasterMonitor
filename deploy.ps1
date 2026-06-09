@@ -33,13 +33,7 @@ if ($LASTEXITCODE -ne 0) { Remove-Item mastermonitor.tar -ErrorAction SilentlyCo
 Remove-Item mastermonitor.tar -ErrorAction SilentlyContinue
 
 Write-Host "`n=== [5/5] Démarrage du container ===" -ForegroundColor Cyan
-ssh "${User}@${VM}" @"
-  set -e
-  cd $AppDir
-  docker compose down --remove-orphans 2>/dev/null || true
-  docker compose up -d --force-recreate
-  docker compose ps
-"@
+ssh "${User}@${VM}" "cd $AppDir && docker compose down --remove-orphans 2>/dev/null; docker compose up -d --force-recreate && docker compose ps"
 
 Write-Host "`n=== Déploiement terminé ===" -ForegroundColor Green
 Write-Host "Application disponible sur http://${VM}:3000" -ForegroundColor Green

@@ -96,6 +96,7 @@ export interface ServerStatus {
   id: string;
   name: string;
   ipAddress: string;
+  osType?: 'windows' | 'linux';
   status: 'online' | 'offline' | 'warning';
     subnetMask?: string;
   healthScore: number;

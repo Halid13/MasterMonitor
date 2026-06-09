@@ -1,0 +1,125 @@
+MASTERMONITOR — Supervision des serveurs Linux
+Rapport technique : objectif, problèmes rencontrés et solutions
+Rédigé le 09 juin 2026
+________________________________________________________________________________
+
+
+OBJECTIF PRINCIPAL
+
+Dans le cadre du projet MasterMonitor, l'un des objectifs centraux était
+d'intégrer la supervision de serveurs Linux distants directement depuis
+l'application web, déployée sous Docker sur la VM 192.168.23.153. L'idée
+directrice était simple : sans installer le moindre agent tiers sur les
+machines cibles, être capable de récupérer en temps réel les métriques
+essentielles de chaque serveur Linux — utilisation du CPU, de la mémoire
+RAM, de l'espace disque, ainsi que l'uptime. Ces informations devaient
+remonter à la demande via une route API interne et s'afficher dans
+l'interface de supervision, au même titre que les serveurs Windows déjà
+configurés.
+
+Pour y parvenir, la solution retenue repose sur SSH : le container Docker
+se connecte au serveur cible via le protocole SSH, exécute une série de
+commandes shell standards qui lisent directement les fichiers système Linux
+(/proc/stat, /proc/meminfo, /proc/uptime, df), puis retourne les résultats
+bruts que l'application parse et transforme en JSON structuré. Cette
+approche est légère, universelle et ne nécessite aucune installation côté
+serveur supervisé. Deux variables d'environnement suffisent à la
+configuration : MM_SSH_USER et MM_SSH_PASS, déclarées dans le fichier
+.env.local de la VM applicative.
+
+
+PROBLÈME 1 — Les commandes awk avec guillemets simples cassaient la connexion SSH
+
+Le premier obstacle rencontré était d'ordre syntaxique, mais ses
+conséquences étaient bloquantes : lors de l'appel SSH, le serveur cible
+renvoyait systématiquement une erreur du type "syntax error: bad for loop
+variable". L'origine du problème résidait dans la manière dont les commandes
+awk étaient transmises via SSH.
+
+En effet, les expressions awk utilisées pour lire /proc/stat contenaient
+des guillemets simples (apostrophes) à l'intérieur même de la chaîne de
+commande. Or, SSH délimite également les commandes distantes par des
+guillemets simples. Le shell interprétait donc chaque apostrophe interne
+comme la fin de la commande distante, produisant une syntaxe incohérente
+impossible à exécuter.
+
+La solution adoptée a été d'encoder la commande complète en Base64 côté
+application Node.js, puis de la transmettre sous cette forme au serveur
+cible, qui se charge de la décoder et de l'exécuter localement. Ainsi, la
+chaîne envoyée via SSH ne contient plus aucun caractère spécial susceptible
+de perturber l'interpréteur. Le serveur reçoit une instruction inoffensive
+du type "echo <base64> | base64 -d | sh", décode le contenu et exécute les
+commandes dans leur intégralité, sans aucune ambiguïté syntaxique. Ce
+mécanisme de double encodage a définitivement résolu le problème de quoting.
+
+
+PROBLÈME 2 — Authentification SSH refusée sur le serveur cible
+
+Une fois le problème de quoting résolu, un second obstacle est apparu :
+les tentatives de connexion SSH vers le serveur 192.168.23.147 échouaient
+avec le message "Permission denied (publickey,password)". L'authentification
+était rejetée tant par clé RSA que par mot de passe.
+
+L'analyse a permis d'identifier deux causes combinées. D'une part,
+l'utilisateur app1, présent sur la VM applicative 192.168.23.153, n'existait
+pas sur le serveur cible 192.168.23.147 — ce qui est parfaitement logique
+puisqu'il s'agit de deux machines distinctes avec leurs propres bases
+d'utilisateurs. D'autre part, l'authentification par mot de passe peut être
+désactivée par défaut sur certaines configurations SSH, notamment sur les
+serveurs à vocation base de données où la sécurité est renforcée.
+
+La solution retenue, à la fois simple et pérenne, a consisté à créer un
+utilisateur dédié au monitoring, nommé "monitor", sur chaque serveur Linux
+à superviser. Cet utilisateur est créé avec le même mot de passe sur tous
+les serveurs Linux, ce qui permet de conserver un unique couple de
+credentials (MM_SSH_USER=monitor / MM_SSH_PASS) dans la configuration
+de l'application. L'utilisateur monitor ne dispose d'aucun privilège
+administrateur : il peut uniquement se connecter en SSH et exécuter des
+lectures de fichiers système accessibles à tous les utilisateurs. C'est
+une approche propre du point de vue de la sécurité, car elle respecte le
+principe du moindre privilège tout en garantissant le bon fonctionnement
+de la supervision.
+
+
+PROBLÈME 3 — Valeur de disque incorrecte, toujours égale à 2 147 483 647 octets
+
+Un troisième problème, plus subtil, a été détecté lors de l'analyse des
+métriques retournées : la taille totale du disque et l'espace libre
+affichaient systématiquement la valeur 2 147 483 647 octets, qui correspond
+exactement à la valeur maximale d'un entier signé sur 32 bits (2^31 - 1).
+Pire encore, ces deux valeurs étant identiques, le pourcentage d'utilisation
+du disque était toujours calculé à 0%, ce qui rendait cette métrique
+totalement inutilisable.
+
+L'origine du bug se trouvait dans la commande awk utilisée pour extraire les
+informations de df. Cette commande employait le format d'affichage printf
+"%d" pour afficher les tailles en octets. Or, sur les implémentations légères
+d'awk présentes sur Alpine Linux et certains systèmes Debian minimaux
+(busybox awk, mawk), le format %d est limité à des entiers 32 bits signés.
+Dès que la valeur réelle du disque dépasse ~2 Go, elle est tronquée à cette
+valeur maximale — ce qui est le cas de la quasi-totalité des disques
+actuels.
+
+La correction a été immédiate une fois la cause identifiée : remplacer
+printf "%d %d\n" par print, l'instruction native d'awk qui affiche les
+valeurs numériques avec leur précision entière complète, sans aucune limite
+de 32 bits. Cette modification d'une seule instruction a suffi à restituer
+des valeurs de disque exactes, qu'il s'agisse de disques de quelques
+gigaoctets ou de plusieurs téraoctets.
+
+
+RÉSULTAT FINAL
+
+À l'issue de ces trois corrections, la supervision Linux fonctionne
+pleinement. Pour chaque serveur Linux enregistré dans MasterMonitor avec le
+type "Linux", l'application se connecte en SSH avec l'utilisateur monitor,
+exécute les commandes encodées en Base64, et retourne des métriques fiables
+en quelques secondes. L'interface de supervision affiche en temps réel le
+CPU, la RAM, l'utilisation disque et l'uptime de chaque machine, sans
+aucun agent installé côté serveur.
+
+Pour ajouter un nouveau serveur Linux à la supervision, la procédure se
+résume à deux étapes : créer l'utilisateur monitor avec le mot de passe
+commun sur la machine cible, puis ajouter le serveur dans l'interface
+MasterMonitor en sélectionnant le type "Linux". La configuration est
+immédiatement opérationnelle.

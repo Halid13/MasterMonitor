@@ -14,7 +14,7 @@ type StatusFilter = 'all' | 'normal' | 'attention' | 'critique';
 export default function ServersPage() {
   const { servers, alerts, addServer, updateServerStatus, deleteServer } = useDashboardStore();
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState({ name: '', ipAddress: '' });
+  const [formData, setFormData] = useState({ name: '', ipAddress: '', osType: 'windows' as 'windows' | 'linux' });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [serverToDelete, setServerToDelete] = useState<{ id: string; name: string; ipAddress: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -211,7 +211,7 @@ export default function ServersPage() {
               const host = encodeURIComponent(server.ipAddress);
               const [pingOk, remoteResult] = await Promise.all([
                 pingReachable(server.ipAddress),
-                fetch(`/api/system/remote-metrics?host=${host}`, { cache: 'no-store', signal: controller.signal })
+                fetch(`/api/system/remote-metrics?host=${host}&type=${encodeURIComponent(server.osType || 'windows')}`, { cache: 'no-store', signal: controller.signal })
                   .then((res) => res.json())
                   .then((data) => ({ ok: Boolean(data?.ok), data }))
                   .catch(() => ({ ok: false as const, data: null as any })),
@@ -394,24 +394,24 @@ export default function ServersPage() {
     if (!formData.name.trim() || !normalizedIpAddress) return;
     if (editingId) {
       setPendingDiagnostic(editingId, 'Serveur modifié. Synchronisation en cours (10–15s)...', formData.name.trim(), normalizedIpAddress);
-      updateServerStatus(editingId, { name: formData.name.trim(), ipAddress: normalizedIpAddress });
+      updateServerStatus(editingId, { name: formData.name.trim(), ipAddress: normalizedIpAddress, osType: formData.osType });
       setEditingId(null);
     } else {
       const id = Date.now().toString();
       setPendingDiagnostic(id, 'Serveur ajouté. Récupération des métriques en cours (10–15s)...', formData.name.trim(), normalizedIpAddress);
       addServer({
-        id, name: formData.name.trim(), ipAddress: normalizedIpAddress, status: 'warning', healthScore: 0,
+        id, name: formData.name.trim(), ipAddress: normalizedIpAddress, osType: formData.osType, status: 'warning', healthScore: 0,
         metrics: { id: `${id}-metrics`, serverId: id, cpuUsage: 0, memoryUsage: 0, diskUsage: 0, networkIn: 0, networkOut: 0, processCount: 0, uptime: 0, timestamp: new Date() },
         lastHealthCheck: new Date(), services: [],
       });
     }
-    setFormData({ name: '', ipAddress: '' });
+    setFormData({ name: '', ipAddress: '', osType: 'windows' });
     setShowModal(false);
   };
   const handleEdit = (id: string) => {
     const server = servers.find((s) => s.id === id);
     if (!server) return;
-    setFormData({ name: server.name, ipAddress: server.ipAddress });
+    setFormData({ name: server.name, ipAddress: server.ipAddress, osType: server.osType || 'windows' });
     setEditingId(id);
     setShowModal(true);
   };
@@ -457,7 +457,7 @@ export default function ServersPage() {
             <div className="bg-white rounded-2xl p-6 w-full max-w-md border border-gray-200 shadow-xl space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-gray-900">{editingId ? 'Modifier le serveur' : 'Ajouter un serveur'}</h2>
-                <button type="button" onClick={() => { setShowModal(false); setEditingId(null); setFormData({ name: '', ipAddress: '' }); }} className="p-2 rounded-md hover:bg-gray-100"><X size={18} /></button>
+                <button type="button" onClick={() => { setShowModal(false); setEditingId(null); setFormData({ name: '', ipAddress: '', osType: 'windows' }); }} className="p-2 rounded-md hover:bg-gray-100"><X size={18} /></button>
               </div>
               <form onSubmit={handleAddServer} className="space-y-4">
                 <div>
@@ -468,9 +468,17 @@ export default function ServersPage() {
                   <label className="text-sm font-medium text-gray-700">Adresse IP</label>
                   <input type="text" value={formData.ipAddress} onChange={(e) => setFormData({ ...formData, ipAddress: e.target.value })} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="192.168.1.10" required />
                 </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Système d&apos;exploitation</label>
+                  <div className="mt-1 flex gap-2">
+                    <button type="button" onClick={() => setFormData({ ...formData, osType: 'windows' })} className={`flex-1 py-2 rounded-md border text-sm font-medium transition ${ formData.osType === 'windows' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' }`}>Windows</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, osType: 'linux' })} className={`flex-1 py-2 rounded-md border text-sm font-medium transition ${ formData.osType === 'linux' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' }`}>Linux</button>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">{formData.osType === 'windows' ? 'Métriques via WinRM/CIM (PowerShell)' : 'Métriques via SSH'}</p>
+                </div>
                 <div className="flex items-center gap-2 pt-2">
                   <button type="submit" className="flex-1 rounded-md bg-blue-600 text-white py-2 text-sm font-semibold hover:bg-blue-700">{editingId ? 'Enregistrer' : 'Ajouter'}</button>
-                  <button type="button" onClick={() => { setShowModal(false); setEditingId(null); setFormData({ name: '', ipAddress: '' }); }} className="flex-1 rounded-md bg-gray-100 text-gray-700 py-2 text-sm font-semibold hover:bg-gray-200">Annuler</button>
+                  <button type="button" onClick={() => { setShowModal(false); setEditingId(null); setFormData({ name: '', ipAddress: '', osType: 'windows' }); }} className="flex-1 rounded-md bg-gray-100 text-gray-700 py-2 text-sm font-semibold hover:bg-gray-200">Annuler</button>
                 </div>
               </form>
             </div>

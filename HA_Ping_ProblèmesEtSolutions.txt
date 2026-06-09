@@ -1,0 +1,463 @@
+================================================================================
+   MASTERMONITOR — INSTANCE 1
+   Gestion du ping : objectif, problèmes rencontrés et solutions
+   Rédigé par : Ingénieur système
+   Date       : 27 mai 2026
+================================================================================
+
+
+OBJECTIF PRINCIPAL
+──────────────────
+
+MasterMonitor est une application web de supervision réseau développée pour
+surveiller en temps réel l'état des serveurs et des adresses IP du réseau
+interne de l'entreprise. L'infrastructure cible repose sur trois machines
+principales : un serveur Active Directory sous Windows à l'adresse
+192.168.23.145, un serveur PostgreSQL sous Linux à l'adresse 192.168.23.147,
+et une machine virtuelle Debian 12 à l'adresse 192.168.23.153 qui héberge
+l'application elle-même sous forme de conteneur Docker.
+
+L'une des fonctionnalités centrales de MasterMonitor est le ping ICMP. Depuis
+la page de gestion des adresses IP, un administrateur peut vérifier à tout
+moment si une machine du réseau est joignable. Depuis la page des serveurs,
+l'application effectue automatiquement des pings à intervalle régulier pour
+déterminer si chaque serveur est en ligne ou hors ligne. C'est précisément
+cette fonctionnalité qui a posé problème et nécessité une intervention
+approfondie.
+
+
+LE SYMPTÔME INITIAL
+───────────────────
+
+Le problème s'est manifesté de façon claire mais déroutante. Depuis l'interface
+web de MasterMonitor, tous les pings échouaient, quel que soit le serveur ciblé.
+L'API renvoyait systématiquement une réponse indiquant que la machine n'était
+pas joignable, avec le message d'erreur "ping: permission denied (are you root?)".
+En parallèle, lorsqu'on se connectait directement au terminal de la VM et qu'on
+lançait manuellement la même commande ping vers les mêmes adresses, les réponses
+arrivaient immédiatement et sans erreur. Ce décalage — fonctionne à la main,
+échoue via l'application — a été le point de départ de toute l'investigation.
+
+
+PREMIER PROBLÈME : LE PING PARTAIT DE LA MAUVAISE MACHINE
+──────────────────────────────────────────────────────────
+
+La première chose à comprendre est la façon dont Next.js fonctionne. Quand un
+utilisateur clique sur le bouton "Ping" dans l'interface, la requête n'est pas
+exécutée dans son navigateur. Elle est transmise à une route API côté serveur,
+qui lance elle-même la commande ping depuis la machine où Node.js tourne.
+Autrement dit, c'est le serveur qui ping, pas le poste de l'utilisateur.
+
+Durant la phase de développement, l'application était exécutée depuis le PC
+Windows du développeur. Or ce poste n'a aucune route réseau vers le sous-réseau
+192.168.23.x des machines virtuelles. Les pings partaient donc de Windows vers
+des adresses IP inaccessibles depuis ce réseau, ce qui expliquait l'échec.
+La solution était de déployer l'application sur la VM Instance 1, qui, elle,
+est directement connectée à ce sous-réseau. Une fois l'application déployée
+sur 192.168.23.153, le ping API partirait de la bonne machine et pourrait
+atteindre les serveurs cibles. C'est ce que le script de déploiement deploy.ps1
+réalise : il construit l'image Docker sur Windows, la transfère vers la VM
+par SCP, puis la démarre avec Docker Compose.
+
+
+DEUXIÈME PROBLÈME : LES PERMISSIONS LINUX POUR LE PING ICMP
+─────────────────────────────────────────────────────────────
+
+Une fois l'application déployée sur la VM, le message d'erreur "permission
+denied (are you root?)" persistait. Ce message indique un problème de droits
+au niveau du système d'exploitation Linux.
+
+Pour comprendre pourquoi, il faut savoir comment fonctionne le ping sur Linux.
+Envoyer un paquet ICMP nécessite d'ouvrir ce qu'on appelle un socket "raw",
+c'est-à-dire un accès direct aux couches réseau bas niveau du kernel. Le noyau
+Linux réserve cette opération aux processus qui possèdent une capacité
+spécifique appelée CAP_NET_RAW. Par défaut, seul le compte root la possède.
+
+Le Dockerfile de MasterMonitor avait été conçu selon les bonnes pratiques de
+sécurité Docker : l'application tournait sous un utilisateur non-root nommé
+"nextjs" avec l'identifiant UID 1001. Cet utilisateur ne disposait pas de
+CAP_NET_RAW. Dès que Node.js lançait la commande ping en tant que "nextjs",
+le kernel refusait l'opération.
+
+Pour résoudre ce problème de permissions, nous avons testé quatre approches
+successives, chacune se heurtant à une limitation différente.
+
+La première tentative consistait à ajouter cap_add: NET_RAW dans le fichier
+docker-compose.yml. Cette directive ajoute CAP_NET_RAW au bounding set du
+conteneur, c'est-à-dire à l'ensemble des capacités que les processus peuvent
+potentiellement obtenir. Mais cela ne suffit pas : quand Node.js (tournant en
+tant qu'utilisateur non-root) lance un processus fils comme ping via exec(),
+ce fils n'hérite pas automatiquement des capacités de son parent non-root.
+La capacité était disponible théoriquement dans le conteneur, mais pas
+effectivement accordée au processus ping. Le résultat était identique.
+
+La deuxième tentative utilisait la commande setcap pour graver la capacité
+cap_net_raw directement sur le binaire ping, ce qui aurait permis à n'importe
+quel utilisateur d'obtenir cette capacité en l'exécutant. En théorie, c'est
+l'approche correcte. En pratique, un problème technique propre à Docker l'a
+rendue inefficace. Docker stocke les layers de ses images dans un système de
+fichiers appelé overlay2. Les file capabilities, comme celles posées par
+setcap, sont stockées dans les attributs étendus du système de fichiers,
+appelés xattrs. Or overlay2 ne garantit pas la préservation de ces xattrs lors
+de la création des layers de l'image. Concrètement, le setcap était appliqué
+pendant le build, puis silencieusement effacé au moment où Docker finalisait
+la layer. La capacité disparaissait sans aucun message d'erreur.
+
+La troisième tentative s'est tournée vers le bit SUID, une autre méthode pour
+permettre à un utilisateur non-root d'exécuter un programme avec les droits
+de son propriétaire, c'est-à-dire root. Contrairement aux xattrs, les bits de
+permission SUID sont stockés dans les métadonnées standard des fichiers tar
+utilisés par Docker, et survivent donc à la création des layers. Cependant,
+cette tentative s'est heurtée à un autre problème. Nous appliquions le bit
+SUID sur /usr/bin/ping, le binaire installé par le paquet iputils. Mais une
+commande de diagnostic exécutée directement à l'intérieur du conteneur a
+révélé quelque chose d'important : sur Alpine Linux, la commande "ping" ne
+pointe pas vers le binaire d'iputils. Elle résout vers /bin/ping, qui est
+un simple lien symbolique vers /bin/busybox. Node.js appelait donc busybox,
+dont le binaire ne possédait pas le bit SUID que nous avions placé sur un
+autre fichier.
+
+La commande de diagnostic qui a permis cette découverte était :
+docker exec mastermonitor-instance1 sh -c "id && ls -la $(which ping)"
+Elle a retourné : /bin/ping -> /bin/busybox, confirmant que toutes nos
+modifications ciblaient le mauvais binaire depuis le début.
+
+La quatrième tentative a alors cherché à corriger le lien symbolique pour
+qu'il pointe vers le binaire iputils, tout en lui appliquant le bit SUID.
+Cette approche a échoué à la compilation car iputils en version 20250605-r0
+(la version disponible sur Alpine Edge au moment des faits) n'installe pas
+son binaire à /usr/bin/ping comme attendu. De plus, le trigger post-installation
+de busybox réécrase les chemins après chaque installation de paquet, rendant
+l'emplacement du binaire imprévisible selon la version d'Alpine utilisée.
+
+Face à ces obstacles successifs, nous avons choisi une solution définitive et
+pragmatique : configurer le conteneur pour qu'il tourne directement en root.
+Dans le fichier docker-compose.yml, la directive user: "0" force le processus
+Node.js à s'exécuter avec l'identifiant utilisateur 0, soit root. Avec root,
+le processus possède nativement toutes les capacités Linux, dont CAP_NET_RAW.
+Le ping busybox fonctionne alors sans aucune modification du binaire, sans
+manipulation de permissions et sans dépendance aux détails de la version
+d'Alpine. Pour un outil de monitoring interne tournant sur une VM dédiée dans
+un réseau isolé, cette approche est parfaitement acceptable.
+
+
+TROISIÈME PROBLÈME : LE CONTENEUR N'ÉTAIT PAS RECRÉÉ
+──────────────────────────────────────────────────────
+
+Après avoir ajouté user: "0" dans docker-compose.yml et relancé le déploiement,
+le problème persistait. Une vérification directe dans le conteneur révélait
+que Node.js tournait toujours en tant qu'utilisateur nextjs avec l'UID 1001,
+comme si la nouvelle configuration n'avait jamais été appliquée.
+
+La cause venait du comportement de Docker Compose lors d'un redéploiement.
+Quand on charge une nouvelle image avec le même tag (mastermonitor:latest) et
+qu'on lance docker compose up -d, Docker Compose compare la configuration
+actuelle avec l'état du conteneur en cours. Si aucun changement "structurel"
+n'est détecté, il laisse le conteneur existant tourner tel quel plutôt que de
+le recréer. Dans notre script de déploiement, la commande docker compose down
+était suivie d'un "|| true" qui ignorait silencieusement les erreurs. Il est
+probable que le down n'ait pas correctement arrêté le conteneur, et que le
+up -d suivant l'ait simplement laissé en place.
+
+La solution était d'ajouter le paramètre --force-recreate à la commande
+docker compose up. Ce paramètre force Docker Compose à détruire et recréer
+le conteneur à chaque déploiement, indépendamment de toute détection de
+changement. Cette modification a été appliquée de manière permanente dans
+le script deploy.ps1 pour garantir que chaque futur déploiement applique
+bien la nouvelle configuration.
+
+
+LEÇONS RETENUES
+───────────────
+
+Cette intervention a mis en lumière plusieurs points techniques importants.
+
+Les routes API Next.js s'exécutent sur la machine serveur, pas dans le
+navigateur. Il est donc essentiel que le serveur soit déployé sur une machine
+ayant accès au réseau cible, et non testée uniquement en local depuis un poste
+de développement avec un environnement réseau différent.
+
+Dans Docker, cap_add ne suffit pas pour accorder des capacités aux processus
+fils lancés par un utilisateur non-root. Les capacités ne se propagent pas
+automatiquement via exec() sans file capabilities ou ambient capabilities.
+
+La commande setcap (file capabilities) n'est pas fiable dans les images Docker
+utilisant overlay2, car les xattrs peuvent être silencieusement effacés lors
+de la création des layers.
+
+Sur Alpine Linux, la commande "ping" pointe par défaut sur busybox et non sur
+iputils. Il est toujours nécessaire de vérifier le chemin réel d'un binaire
+avec "which" et "ls -la" avant d'appliquer des modifications dessus.
+
+docker compose up -d ne recrée pas forcément le conteneur si le tag de l'image
+n'a pas changé. Dans un script de déploiement automatisé, --force-recreate
+est indispensable pour garantir la cohérence de la configuration.
+
+Enfin, le pipe binaire de PowerShell (docker save | ssh docker load) corrompt
+le flux tar lors du transfert. Sur Windows, il faut obligatoirement passer par
+un fichier intermédiaire avec docker save -o, scp, puis docker load -i.
+
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+ PARTIE 1 — OBJECTIF PRINCIPAL
+────────────────────────────────────────────────────────────────────────────────
+
+MasterMonitor est une application web de supervision réseau interne.
+Son rôle est de surveiller en temps réel l'état de serveurs et d'adresses IP
+présents sur le réseau de l'entreprise (sous-réseau 192.168.23.x).
+
+L'une de ses fonctionnalités clés est le PING ICMP :
+  → Depuis la page "/ip-addresses", l'administrateur peut tester si une
+    machine est joignable en envoyant un ping vers son adresse IP.
+  → Depuis la page "/servers", l'état "online / offline" de chaque serveur
+    est déterminé à intervalle régulier via des pings automatiques.
+
+L'infrastructure cible est la suivante :
+  ┌─────────────────────────────────────────────────────────┐
+  │  Serveur Active Directory  →  192.168.23.145 (Windows)  │
+  │  Serveur PostgreSQL        →  192.168.23.147 (Linux)     │
+  │  VM Instance 1 (app)       →  192.168.23.153 (Debian 12) │
+  │  PC Windows développeur    →  réseau local               │
+  └─────────────────────────────────────────────────────────┘
+
+L'application est déployée dans un conteneur Docker sur la VM 192.168.23.153.
+Le conteneur utilise network_mode: host, ce qui signifie qu'il partage
+directement l'interface réseau de la VM — comme s'il était un processus
+normal tournant sur la machine.
+
+
+────────────────────────────────────────────────────────────────────────────────
+ PARTIE 2 — SYMPTÔME OBSERVÉ
+────────────────────────────────────────────────────────────────────────────────
+
+Depuis l'interface MasterMonitor, les pings échouaient systématiquement :
+
+  Réponse de l'API :
+  {
+    "ok": true,
+    "target": "192.168.23.145",
+    "reachable": false,
+    "sent": 0,
+    "received": 0,
+    "errorOutput": "ping: permission denied (are you root?)"
+  }
+
+En revanche, depuis le terminal de la VM (app1@app1), les mêmes pings
+fonctionnaient parfaitement :
+
+  app1@app1:~$ ping 192.168.23.145
+  64 bytes from 192.168.23.145: icmp_seq=1 ttl=128 time=0.827 ms
+  ← Succès
+
+Ce décalage (fonctionne à la main, échoue via l'app) a été le point de départ
+de l'investigation.
+
+
+────────────────────────────────────────────────────────────────────────────────
+ PARTIE 3 — ANALYSE ET PROBLÈMES RENCONTRÉS
+────────────────────────────────────────────────────────────────────────────────
+
+Nous avons identifié une chaîne de 3 problèmes distincts et imbriqués.
+
+
+── PROBLÈME N°1 : Le ping partait de la mauvaise machine ──────────────────────
+
+  Description :
+    Les routes API de Next.js s'exécutent côté SERVEUR, pas dans le navigateur.
+    Quand l'utilisateur clique "Ping" dans l'interface, c'est le serveur Node.js
+    qui exécute la commande ping — pas le navigateur, pas la VM.
+
+    Durant le développement, l'application tournait sur le PC Windows du
+    développeur. Ce PC n'a pas de route réseau vers 192.168.23.x (le sous-réseau
+    des VMs). Les pings partaient donc de Windows vers des IPs inaccessibles.
+
+  Preuve :
+    Sur Windows, ping 192.168.23.145 → "Délai d'attente de la demande dépassé"
+    Sur la VM,    ping 192.168.23.145 → succès immédiat
+
+  Solution appliquée :
+    Déployer l'application sur la VM Instance 1 (192.168.23.153) via Docker.
+    Depuis la VM, le sous-réseau 192.168.23.x est directement accessible.
+    Le ping API partira désormais de la bonne machine.
+
+
+── PROBLÈME N°2 : Le conteneur Docker n'avait pas le droit de pinger ─────────
+
+  Description :
+    Sur Linux, envoyer un paquet ICMP (ping) nécessite d'ouvrir un socket
+    "raw" (SOCK_RAW). Le kernel Linux réserve cette opération aux processus
+    qui possèdent la capacité CAP_NET_RAW.
+
+    Par défaut, le Dockerfile définissait un utilisateur non-root "nextjs"
+    (UID 1001) pour des raisons de sécurité. Cet utilisateur ne possède pas
+    CAP_NET_RAW. Résultat : dès que Node.js lançait la commande ping en
+    tant que "nextjs", le kernel refusait avec "permission denied".
+
+  Ce que nous avons essayé (et pourquoi ça n'a pas fonctionné) :
+
+    Tentative 1 — cap_add: NET_RAW dans docker-compose.yml
+      → Ajoute CAP_NET_RAW au bounding set du conteneur.
+      → Insuffisant : cap_add ne propage pas la capacité aux processus fils
+        lancés par un utilisateur non-root via exec(). L'enfant (ping) ne
+        l'hérite pas automatiquement.
+      → Résultat : toujours "permission denied"
+
+    Tentative 2 — setcap cap_net_raw+ep sur le binaire ping
+      → Grave la capacité directement sur le fichier /usr/bin/ping.
+      → Semble correct en théorie : tout utilisateur qui exécute ce binaire
+        obtient CAP_NET_RAW via la "file capability".
+      → Problème découvert : Docker utilise overlay2 comme système de fichiers
+        pour ses layers. Les "file capabilities" sont stockées dans les
+        attributs étendus (xattrs) du système de fichiers. overlay2 ne
+        garantit pas leur préservation lors de la création des layers.
+        Le setcap était donc effacé silencieusement au moment du build.
+      → Résultat : toujours "permission denied"
+
+    Tentative 3 — chmod u+s (bit SUID) sur le binaire ping
+      → Le bit SUID permet à n'importe quel utilisateur d'exécuter un
+        programme avec les droits de son propriétaire (root).
+      → Les bits SUID sont stockés dans les métadonnées standard des
+        fichiers tar, contrairement aux xattrs. Ils survivent aux layers.
+      → MAIS : ciblait /usr/bin/ping (binaire d'iputils)
+        alors qu'Alpine utilisait /bin/ping → /bin/busybox (symlink busybox).
+        Node.js appelait "ping" qui résolvait vers busybox, pas iputils.
+        Le SUID appliqué sur le mauvais binaire était donc sans effet.
+      → Résultat : toujours "permission denied"
+
+    Investigation dans le conteneur (commande de diagnostic) :
+      docker exec mastermonitor-instance1 sh -c \
+        "id && ls -la \$(which ping) && ping -c1 127.0.0.1 2>&1 | head -3"
+
+      Sortie obtenue :
+        uid=1001(nextjs) gid=65533(nogroup)
+        /bin/ping -> /bin/busybox      ← busybox, pas iputils !
+        ping: permission denied (are you root?)
+
+      → Ce diagnostic a révélé que le symlink /bin/ping pointait vers busybox
+        et que toutes nos modifications ciblaient le mauvais binaire.
+
+    Tentative 4 — Remplacer le symlink /bin/ping par iputils + SUID
+      → apk add iputils && chmod u+s /usr/bin/ping && ln -sf /usr/bin/ping /bin/ping
+      → PROBLÈME : iputils version 20250605-r0 (Alpine Edge) n'installe pas
+        le binaire à /usr/bin/ping. Le trigger de busybox (busybox-1.37.0-r30)
+        s'exécute APRÈS l'installation et réécrase les chemins.
+      → Erreur au build : "chmod: /usr/bin/ping: No such file or directory"
+      → Résultat : build cassé
+
+  Solution finale appliquée :
+    Plutôt que de continuer à chercher le bon chemin du binaire ping dans
+    un environnement Alpine mouvant, nous avons choisi d'exécuter le conteneur
+    directement en root.
+
+    Dans docker-compose.yml :
+      user: "0"
+
+    Avec UID 0 (root), le processus Node.js possède nativement toutes les
+    capacités Linux dont CAP_NET_RAW. Le busybox ping fonctionne sans aucune
+    modification du binaire ni du Dockerfile.
+
+    C'est une approche acceptable pour un outil de monitoring interne tournant
+    sur une VM dédiée dans un réseau isolé.
+
+
+── PROBLÈME N°3 : Le conteneur n'était pas recréé après mise à jour ───────────
+
+  Description :
+    Après avoir ajouté user: "0" dans docker-compose.yml et redéployé,
+    le conteneur tournait toujours en uid=1001(nextjs). La config n'était
+    pas appliquée.
+
+  Cause :
+    docker compose up -d compare la config actuelle avec le conteneur en cours.
+    Si l'image a le même tag (mastermonitor:latest) et que Docker ne détecte
+    pas de changement "structurel", il laisse le conteneur existant tourner
+    sans le recréer. La commande "docker compose down" qui précède avait
+    peut-être échoué silencieusement (|| true dans le script).
+
+  Diagnostic utilisé :
+    cat ~/mastermonitor/docker-compose.yml   → confirmait user: "0" présent
+    docker exec mastermonitor-instance1 id  → montrait uid=1001 (ancien conteneur)
+
+  Solution appliquée :
+    Sur la VM, forcer manuellement la recréation :
+      docker compose down --remove-orphans
+      docker compose up -d --force-recreate
+
+    Et correction permanente dans deploy.ps1 :
+      docker compose up -d  →  docker compose up -d --force-recreate
+
+    --force-recreate détruit et recrée toujours le conteneur, quelle que soit
+    la détection de changement de Docker Compose. La nouvelle config est
+    garantie d'être appliquée à chaque déploiement.
+
+
+────────────────────────────────────────────────────────────────────────────────
+ PARTIE 4 — RÉSUMÉ DES MODIFICATIONS APPORTÉES
+────────────────────────────────────────────────────────────────────────────────
+
+  Fichier                  Modification
+  ─────────────────────    ────────────────────────────────────────────────────
+  docker-compose.yml       + user: "0"          (exécution en root)
+                           + cap_add: NET_RAW   (bonne pratique, conservé)
+
+  Dockerfile               Suppression du bloc iputils/chmod/setcap
+                           (tentatives infructueuses, supprimées proprement)
+                           Suppression de USER nextjs
+                           (inutile car docker-compose.yml force user: "0")
+
+  deploy.ps1               docker compose up -d  →  docker compose up -d --force-recreate
+                           (garantit la recréation du conteneur à chaque déploiement)
+
+                           Remplacement du streaming SSH (pipe binaire corrompu
+                           par PowerShell) par SCP + docker load :
+                             docker save | ssh docker load
+                             →  docker save -o .tar  +  scp  +  docker load -i
+
+
+────────────────────────────────────────────────────────────────────────────────
+ PARTIE 5 — VÉRIFICATION FINALE
+────────────────────────────────────────────────────────────────────────────────
+
+  Sur la VM, après déploiement :
+
+    docker exec mastermonitor-instance1 id
+    → uid=0(root) gid=0(root) groups=0(root)   ✓
+
+    curl "http://localhost:3000/api/system/ping?target=192.168.23.145&count=2"
+    → { "ok": true, "reachable": true, "sent": 2, "received": 2 }   ✓
+
+  Dans l'interface MasterMonitor :
+    → Page /ip-addresses : les pings passent vers 192.168.23.145 et 192.168.23.147
+    → Page /servers      : les serveurs passent de "offline" à "online"   ✓
+
+
+────────────────────────────────────────────────────────────────────────────────
+ PARTIE 6 — LEÇONS RETENUES
+────────────────────────────────────────────────────────────────────────────────
+
+  1. Les routes API Next.js s'exécutent sur la machine qui héberge le serveur,
+     pas dans le navigateur. Tester en local ne reproduit pas le comportement
+     en production si les réseaux sont différents.
+
+  2. Dans Docker, cap_add seul ne suffit pas pour les processus fils non-root.
+     Les capacités ne se propagent pas automatiquement via exec() à un
+     utilisateur non-root sans file capabilities ou ambient capabilities.
+
+  3. setcap (file capabilities) n'est pas fiable dans les layers Docker
+     overlay2 : les xattrs peuvent être silencieusement effacés.
+
+  4. En Alpine, "ping" pointe par défaut sur busybox (/bin/ping → /bin/busybox),
+     pas sur iputils. Toujours vérifier avec "which ping" et "ls -la" avant
+     d'appliquer des modifications sur un binaire.
+
+  5. docker compose up -d ne recrée pas forcément le conteneur si le tag
+     d'image n'a pas changé. Toujours utiliser --force-recreate dans les
+     scripts de déploiement automatisé pour garantir la cohérence.
+
+  6. Le pipe binaire PowerShell (docker save | ssh docker load) corrompt
+     le flux tar. Sur Windows, toujours passer par un fichier intermédiaire
+     (docker save -o fichier.tar + scp + docker load -i).
+
+================================================================================
