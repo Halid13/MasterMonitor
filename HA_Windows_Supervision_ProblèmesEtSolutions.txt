@@ -1,0 +1,273 @@
+================================================================================
+  MASTERMONITOR — SUPERVISION DES MACHINES WINDOWS
+  Rapport de résolution de problèmes — 09/06/2026
+================================================================================
+
+
+INTRODUCTION
+────────────
+
+Dans le cadre du projet MasterMonitor, nous avons mis en place une application
+web de supervision développée avec Next.js. Cette application s'exécute dans
+un container Docker Alpine hébergé sur une machine virtuelle Linux (Debian 12,
+IP 192.168.23.153) et a pour mission d'afficher en temps réel les métriques
+système des serveurs du réseau : utilisation du processeur (CPU), de la mémoire
+vive (RAM), de l'espace disque et le temps de fonctionnement continu (uptime).
+
+Si la supervision des serveurs Linux était déjà fonctionnelle grâce à une
+approche SSH classique, la supervision du serveur Windows — un Contrôleur de
+Domaine Active Directory sous Windows Server (IP 192.168.23.145, domaine
+monitor.local) — s'est révélée bien plus complexe. Ce document retrace
+l'ensemble du cheminement technique : les approches envisagées, les obstacles
+rencontrés et les solutions qui ont permis d'aboutir à un résultat fonctionnel.
+
+
+PREMIÈRE APPROCHE : WINRM ET LE MODULE PSWSMAN
+────────────────────────────────────────────────
+
+Notre premier réflexe a été d'utiliser WinRM (Windows Remote Management),
+le protocole natif de Microsoft pour l'administration à distance de machines
+Windows via PowerShell. Pour que PowerShell 7 installé dans notre container
+Docker Alpine puisse communiquer via WinRM, nous avons installé le module
+PSWSMan, qui réimplémente le client WinRM pour les systèmes Linux.
+
+L'idée était simple : depuis le container, exécuter un script PowerShell qui
+se connecterait au serveur Windows, interrogerait les classes WMI/CIM
+(Win32_Processor, Win32_OperatingSystem, Win32_LogicalDisk) et renverrait les
+métriques au format JSON.
+
+La première tentative utilisait WinRM sur HTTP (port 5985) avec
+l'authentification Basic. Elle a immédiatement échoué avec le message :
+
+    "Basic authentication is not supported over HTTP on Unix."
+
+PSWSMan interdit explicitement cette combinaison pour des raisons de sécurité :
+envoyer des identifiants en clair sur le réseau est inacceptable. Il fallait
+donc chiffrer le transport et passer sur WinRM HTTPS (port 5986).
+
+
+WINRM SUR HTTPS : UN CERTIFICAT AUTO-SIGNÉ ET DE NOUVEAUX OBSTACLES
+─────────────────────────────────────────────────────────────────────
+
+Pour activer WinRM HTTPS sur le serveur Windows, nous avons suivi la procédure
+standard : création d'un certificat auto-signé avec New-SelfSignedCertificate,
+configuration d'un listener HTTPS sur le port 5986, activation de
+l'authentification Basic côté service WinRM. Du côté du code PowerShell dans
+notre container, nous avons ajouté des options de session pour ignorer les
+vérifications du certificat auto-signé (puisqu'il n'est pas signé par une
+autorité de certification reconnue) :
+
+    $so = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
+
+C'est là qu'un second problème est apparu. Le build Docker a échoué avec
+l'erreur suivante lors du déploiement :
+
+    "A parameter cannot be found that matches parameter name
+     'SkipRevocationCheck'."
+
+Le paramètre -SkipRevocationCheck n'existe tout simplement pas dans PowerShell
+7 sur Linux. Il est spécifique à Windows. En le supprimant, nous nous sommes
+retrouvés avec la ligne simplifiée :
+
+    $so = New-PSSessionOption -SkipCACheck -SkipCNCheck
+
+Le build est passé. Mais le vrai problème restait à venir.
+
+
+UN TIMEOUT INEXPLIQUÉ : LE MUR DE L'INCOMPATIBILITÉ
+─────────────────────────────────────────────────────
+
+Après déploiement, l'endpoint de supervision Windows répondait systématiquement
+avec une erreur de timeout au bout de 65 secondes. Pour comprendre ce qui se
+passait réellement, nous avons exécuté un script de test directement dans le
+container Docker en cours d'exécution. Le résultat était le suivant :
+
+    PSWSMan loaded
+    ERROR: The WS-Management service cannot complete the operation
+           within the time specified.
+
+Ce message indique que la connexion TCP au port 5986 s'établissait bien (nous
+avons vérifié la joignabilité du port depuis la VM), et que la poignée de main
+TLS fonctionnait également. Mais la communication WS-Management elle-même —
+le protocole de couche applicative de WinRM — ne aboutissait jamais.
+
+Nous nous trouvions face à une incompatibilité fondamentale entre PSWSMan
+(l'implémentation Linux du client WinRM) et le service WinRM du Contrôleur de
+Domaine Windows. Cette incompatibilité n'avait pas de solution simple ni rapide.
+Plutôt que de continuer à chercher un contournement fragile, nous avons pris
+la décision de changer complètement d'approche.
+
+
+PIVOT TECHNIQUE : SSH + POWERSHELL, UNE SOLUTION PLUS ROBUSTE
+──────────────────────────────────────────────────────────────
+
+L'idée était d'utiliser SSH pour se connecter au serveur Windows et d'y
+exécuter des commandes PowerShell à distance — exactement comme nous le faisions
+déjà pour les serveurs Linux avec des commandes shell. Windows Server 2019 et
+les versions ultérieures intègrent OpenSSH Server comme fonctionnalité
+optionnelle, ce qui rendait cette approche tout à fait viable.
+
+Sur le serveur Windows, nous avons installé et activé OpenSSH Server :
+
+    Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+    Start-Service sshd
+    Set-Service -Name sshd -StartupType 'Automatic'
+
+Une règle de pare-feu a également été créée pour autoriser les connexions sur
+le port 22. Le container Docker, qui disposait déjà de sshpass (installé pour
+la supervision Linux), pouvait désormais tenter de se connecter.
+
+
+PROBLÈME DE COMPTE UTILISATEUR SUR UN CONTRÔLEUR DE DOMAINE
+─────────────────────────────────────────────────────────────
+
+Pour la supervision, nous avons voulu créer un compte dédié "monitor" avec des
+droits suffisants pour interroger les métriques système. La création du compte
+a fonctionné sans difficulté. En revanche, l'ajout au groupe Administrateurs
+a généré une série d'erreurs surprenantes :
+
+    net localgroup Administrators monitor /add
+    → Erreur 1376 : Le groupe local spécifié n'existe pas.
+
+    net localgroup Administrateurs monitor /add
+    → Erreur 1317 : Le compte spécifié n'existe pas.
+
+Ces erreurs s'expliquent par la nature particulière d'un Contrôleur de Domaine.
+Sur un DC, la base de sécurité locale (SAM) n'existe plus : elle est remplacée
+intégralement par Active Directory. Les "groupes locaux" au sens habituel
+n'existent pas. Tout passe par des groupes de domaine.
+
+De plus, notre Windows Server étant installé en français, les noms des groupes
+intégrés sont traduits. Pour trouver le bon nom, nous avons listé les groupes
+de domaine existants :
+
+    net group /domain
+    → *Admins du domaine
+    → *Utilisateurs du domaine
+    → ...
+
+La commande correcte était donc :
+
+    net group "Admins du domaine" monitor /add /domain
+
+Le compte "monitor" a ainsi été ajouté avec les droits nécessaires pour exécuter
+les requêtes CIM/WMI sur le serveur.
+
+
+LE FORMAT DU NOM D'UTILISATEUR : UNE SUBTILITÉ DU DOMAINE
+───────────────────────────────────────────────────────────
+
+Une fois OpenSSH configuré, le premier test de connexion SSH depuis le container
+Docker a échoué avec une erreur d'authentification. Les logs OpenSSH sur le
+Windows Server indiquaient clairement :
+
+    sshd: Invalid user monitor from 192.168.23.153 port 49680
+    sshd: Failed password for invalid user monitor
+
+Le serveur SSH Windows ne reconnaissait pas l'utilisateur "monitor". La raison
+est là aussi liée au Contrôleur de Domaine : "monitor" est un compte de domaine,
+pas un compte local. OpenSSH sur Windows ne peut pas résoudre un compte de
+domaine à partir du simple nom court. Il faut lui indiquer à quel domaine
+appartient l'utilisateur, en utilisant le format UPN (User Principal Name) :
+
+    monitor@monitor.local
+
+Avec ce format, la connexion a immédiatement fonctionné :
+
+    sshpass -p 'Azerty1234@' ssh -l 'monitor@monitor.local'
+            192.168.23.145 hostname
+    → WIN-MASTERMONITOR
+
+
+L'ENCODAGE BASE64 : RÉSOUDRE LE PROBLÈME DES GUILLEMETS
+────────────────────────────────────────────────────────
+
+Il restait un défi technique majeur : comment transmettre des commandes
+PowerShell complexes via SSH sans que les guillemets et les caractères spéciaux
+ne soient interprétés ou corrompus en chemin ?
+
+Le problème était réel car la commande traverse plusieurs couches
+d'interprétation successives : le template JavaScript, le shell Linux (/bin/sh),
+le client SSH, le serveur SSH Windows (cmd.exe), puis enfin PowerShell. Chaque
+couche peut potentiellement modifier les guillemets, les dollars ou les
+apostrophes présents dans la commande.
+
+Par exemple, la commande suivante pose un problème d'échappement à chaque étape :
+
+    Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
+
+PowerShell offre une solution élégante à ce problème : le paramètre
+-EncodedCommand. Il accepte un script encodé en base64 au format UTF-16LE
+(l'encodage Unicode natif de Windows). Un script encodé ne contient plus que
+des caractères alphanumériques, des signes + / = — absolument aucun caractère
+spécial qui pourrait poser problème.
+
+En Node.js/TypeScript, l'encodage se réalise en une seule ligne :
+
+    const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+
+Le script PowerShell ainsi encodé est transmis de manière parfaitement fiable
+à travers toutes les couches, sans aucun risque de corruption. Il produit cinq
+lignes de sortie : le nom de la machine, l'uptime en secondes, le pourcentage
+CPU, la mémoire totale et libre en octets, et l'espace disque total et libre
+en octets. Ce format est identique à celui que nous utilisons pour les serveurs
+Linux, ce qui nous a permis de réutiliser la même fonction de parsing.
+
+
+NETTOYAGE DU CODE : LES ERREURS DE COMPILATION TYPESCRIPT
+───────────────────────────────────────────────────────────
+
+Une fois le nouveau code SSH en place, le déploiement a encore échoué, mais
+pour une raison différente cette fois. TypeScript, configuré en mode strict
+dans Next.js, signalait plusieurs variables déclarées mais plus jamais utilisées
+depuis la suppression du code WinRM :
+
+    Type error: 'MM_REMOTE_USER' is declared but its value is never read.
+    Type error: 'escapePsSingleQuoted' is declared but its value is never read.
+
+Ces erreurs venaient des restes de l'ancienne architecture WinRM : variables
+d'environnement (MM_REMOTE_USER, MM_REMOTE_PASS), fonctions utilitaires
+(runPowerShell, escapePsSingleQuoted), constantes (PS_EXE,
+REMOTE_METRICS_TIMEOUT_MS) et imports de modules Node.js qui n'étaient plus
+utilisés (writeFileSync, unlinkSync, join, tmpdir, randomUUID).
+
+Après suppression systématique de tous ces éléments, le build TypeScript s'est
+terminé sans la moindre erreur.
+
+
+RÉSULTAT FINAL
+──────────────
+
+L'endpoint de supervision Windows répond désormais en quelques secondes avec
+des données complètes et précises. La requête suivante :
+
+    GET /api/system/remote-metrics?host=192.168.23.145&type=windows
+
+retourne une réponse JSON de la forme :
+
+    {
+      "ok": true,
+      "host": "WIN-MASTERMONITOR",
+      "cpu": 3.56,
+      "memory": 42.10,
+      "disk": 67.30,
+      "uptime": 86400,
+      "diskTotal": 107374182400,
+      "diskFree": 35433480192,
+      "memTotal": 17179869184,
+      "memFree": 9932111872,
+      "stoppedServices": []
+    }
+
+La page Serveurs de MasterMonitor affiche maintenant en temps réel les métriques
+du Contrôleur de Domaine Windows, au même titre que les serveurs Linux. Les deux
+types de serveurs utilisent désormais la même infrastructure SSH, avec sshpass
+pour l'authentification par mot de passe et une variable d'environnement dédiée
+(MM_WIN_SSH_USER=monitor@monitor.local) pour distinguer le format de nom
+d'utilisateur propre aux comptes de domaine Windows.
+
+Ce projet illustre comment une contrainte technique — l'incompatibilité de
+WinRM sur Alpine Linux — peut conduire à une solution finalement plus simple,
+plus cohérente et plus maintenable que l'approche initiale.
+
+================================================================================

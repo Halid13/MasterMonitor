@@ -1,0 +1,104 @@
+MASTERMONITOR - REDACTION EXPLICATIVE SUR LES CHOIX DE STACK, D'OUTILS ET D'AUTOMATISATION
+Date: 01/07/2026
+
+Le projet MasterMonitor a ete concu comme une plateforme de pilotage de l'infrastructure,
+et non comme une application web classique. En tant qu'ingenieur reseaux et systemes,
+j'ai cherche a construire un outil capable de centraliser l'observabilite, de reduire le
+temps de diagnostic et d'ameliorer la qualite des decisions en exploitation. L'ensemble des
+choix techniques a donc ete fait avec une logique operationnelle claire: obtenir une
+supervision performante, securisee, maintenable, evolutive et fiable.
+
+Le socle applicatif repose sur Next.js avec React et TypeScript. Ce choix permet d'unifier
+dans une meme architecture les pages metier, le tableau de bord et les routes API internes.
+Cette approche simplifie la conception globale, accelere le developpement et evite de
+multiplier les briques technologiques sans valeur ajoutee. TypeScript apporte un cadre
+structurant indispensable dans un projet qui manipule des donnees heterogenes
+(serveurs, tickets, logs, adresses IP, snapshots). Le typage fort reduit fortement les
+regressions et rend les evolutions plus sures, ce qui est essentiel pour la maintenance dans
+la duree. La couche front-end, basee sur Tailwind CSS, PostCSS et Autoprefixer, a ete
+retenue pour produire rapidement une interface lisible et coherente, tout en gardant un
+pipeline moderne et efficace. L'etat global est gere avec Zustand, un choix volontairement
+leger qui offre une bonne lisibilite du flux applicatif sans complexifier l'architecture.
+
+Pour la visualisation et l'exploitation des informations, l'integration de Recharts,
+Lucide React et xlsx repond a des besoins concrets. Les graphiques permettent de rendre
+immediatement visibles les tendances et les signaux faibles, les icones renforcent la
+lisibilite des informations critiques, et l'export au format Excel facilite les usages
+d'audit, de reporting et de partage entre equipes. Ici encore, l'objectif n'est pas
+esthetique uniquement: il est operationnel.
+
+Sur le plan de la donnee, PostgreSQL a ete privilegie comme moteur de persistance pour sa
+robustesse, sa fiabilite transactionnelle et sa capacite a evoluer avec le projet. Dans un
+contexte d'infrastructure mixte, disposer d'une base relationnelle mature permet de garantir
+l'integrite des donnees et de structurer clairement les objets metier. Le schema SQL formalise
+les entites essentielles (utilisateurs, serveurs, tickets, logs, alertes, ping, snapshots),
+ce qui facilite a la fois la maintenance, la reprise et la scalabilite. Le modele de
+collecte par niveaux (realtime, dynamic, static) traduit une decision d'ingenierie importante:
+toutes les donnees n'ont pas la meme criticite ni la meme frequence de variation. En separant
+les rythmes de mise a jour, on conserve une excellente reactivite sans surcharger inutilement
+la plateforme.
+
+Le temps reel s'appuie sur les flux SSE (Server-Sent Events), une technologie parfaitement
+adaptee a ce cas d'usage. Pour un dashboard de supervision, le besoin principal est de diffuser
+des etats et des evenements vers les clients de maniere continue. SSE fournit ce comportement
+de facon simple, stable et maintenable, sans introduire la complexite d'un canal bidirectionnel
+complet lorsque celui-ci n'est pas necessaire.
+
+La dimension reseaux/systemes est au coeur du projet. L'authentification s'appuie sur
+LDAP/Active Directory via ldapts, afin d'aligner le controle d'acces applicatif avec la
+gouvernance deja en place dans le SI. Cette integration permet de reutiliser les groupes AD,
+d'appliquer les politiques de role et de renforcer la securite en evitant les comptes locaux
+applicatifs disperses. Pour la collecte distante, SSH a ete retenu comme protocole principal,
+car il est standard, maitrisable et largement deploye en production. Il permet de recuperer
+les metriques Linux de facon scriptable, et d'executer des commandes PowerShell cote Windows,
+ce qui harmonise les methodes de supervision sur des environnements heterogenes.
+
+Le support de PowerShell 7 et de PSWSMan dans l'environnement de runtime renforce cette
+orientation hybride Windows/Linux. Ce n'est pas un ajout cosmetique: c'est un choix de
+compatibilite operationnelle pour rester proche des pratiques d'administration reelles,
+notamment dans les environnements Microsoft. En parallele, les fonctions de ping ICMP,
+scan IP, lecture ARP et resolution DNS PTR apportent une visibilite reseau de terrain,
+essentielle pour verifier la connectivite, qualifier la latence et identifier rapidement
+les hotes actifs dans un sous-reseau.
+
+La supervision locale de la machine d'execution (CPU, memoire, disque, reseau, services)
+complete ce dispositif. L'application se surveille aussi elle-meme, avec des seuils d'anomalie
+et des mecanismes de temporisation pour eviter le bruit de fond. Cette logique ameliore la
+fiabilite du signal d'alerte: on ne cherche pas a produire plus d'evenements, mais des
+evenements utiles, actionnables et priorisables.
+
+La strategie de deploiement repose sur Docker multi-stage avec Node 22 Alpine, puis sur
+Docker Compose en execution. Le multi-stage permet de separer strictement la phase de build
+et la phase de runtime, ce qui produit des images plus petites, plus propres et plus rapides
+a deployer. Cela contribue simultanement a la performance, a la maintenance et a la reduction
+de surface d'attaque. Le mode de redemarrage automatique des conteneurs assure une meilleure
+continuite de service en cas d'incident ou de reboot de la VM.
+
+Le choix de network_mode: host a ete fait de maniere consciente, pour repondre a une contrainte
+reseau metier: dans ce contexte, la VM doit communiquer de facon directe avec les services
+internes (AD, LDAP, ressources du LAN) sans effets de bord lies au NAT ou au bridge. Ce choix
+implique un compromis sur l'isolement reseau du conteneur, mais il reste pertinent dans une
+infrastructure interne maitrisee, ou la fiabilite des flux et la simplicite de diagnostic sont
+prioritaires.
+
+L'automatisation du cycle de deploiement est un pilier du projet. Les scripts deploy.ps1 et
+deploy-instance1.sh couvrent les etapes critiques: build, transfert, provisionnement,
+installation, lancement et redemarrage. PM2 vient renforcer l'exploitation en assurant la
+gestion du processus applicatif, l'autorestart et la centralisation des logs. Cette chaine
+automatisee reduit la dependance aux manipulations manuelles, limite les erreurs humaines,
+et garantit une meilleure reproductibilite entre environnements et entre instances.
+
+Sur le volet securite, la separation stricte entre code et secrets via variables d'environnement
+est une decision structurante. Les identifiants sensibles ne sont pas exposes dans le code ni
+embarques dans les images. Le middleware applicatif impose le controle de session et de role,
+avec une logique d'acces admin pour proteger les zones critiques du dashboard. Enfin, la
+journalisation structuree (system, user, action, security) assure la tracabilite de bout en
+bout: qui a fait quoi, quand, et depuis quelle source. Cette capacite est essentielle autant
+pour l'audit que pour l'analyse post-incident.
+
+En synthese, l'architecture de MasterMonitor traduit une vision d'ingenierie reseaux/systemes
+pragmatique et orientee exploitation. Chaque technologie retenue repond a un besoin precis,
+avec une justification fonctionnelle et operationnelle. Le resultat est une plateforme capable
+de fournir une supervision reactive, une gouvernance d'acces robuste, une maintenance simplifiee,
+et une base evolutive pour accompagner la croissance de l'infrastructure sans compromettre la
+fiabilite globale.

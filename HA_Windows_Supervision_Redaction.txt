@@ -1,0 +1,442 @@
+================================================================================
+  MASTERMONITOR — SUPERVISION DES MACHINES WINDOWS
+  Document technique de résolution de problèmes
+  Rédigé le 09/06/2026
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  CONTEXTE ET OBJECTIF PRINCIPAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MasterMonitor est une application web de supervision développée avec Next.js.
+Elle tourne dans un container Docker Alpine sur une machine virtuelle Linux
+(Debian 12, IP : 192.168.23.153).
+
+L'objectif est de collecter en temps réel les métriques système — CPU, RAM,
+espace disque et temps de fonctionnement (uptime) — depuis les serveurs du
+réseau, et de les afficher dans un tableau de bord.
+
+Pour les serveurs Linux, la collecte fonctionne via SSH avec des commandes
+shell (awk, df). Pour les serveurs Windows, le défi était plus complexe :
+il fallait interroger un Contrôleur de Domaine Active Directory Windows Server
+(IP : 192.168.23.145) depuis un container Docker Linux.
+
+Ce document retrace l'ensemble des problèmes rencontrés et leurs solutions.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ARCHITECTURE DE DÉPART
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ┌─────────────────────────────────┐
+  │  Poste développeur (Windows 11) │
+  │  192.168.23.158                 │
+  └────────────┬────────────────────┘
+               │ deploy.ps1 (Docker build + SCP)
+               ▼
+  ┌─────────────────────────────────┐
+  │  VM Linux Debian 12             │
+  │  192.168.23.153                 │
+  │  ┌─────────────────────────┐   │
+  │  │  Container Docker Alpine│   │
+  │  │  MasterMonitor (Next.js)│   │
+  │  │  Port 3000              │   │
+  │  └────────────┬────────────┘   │
+  └───────────────┼─────────────────┘
+                  │ collect metrics
+                  ▼
+  ┌─────────────────────────────────┐
+  │  Windows Server (DC)            │
+  │  192.168.23.145                 │
+  │  Domaine : monitor.local        │
+  └─────────────────────────────────┘
+
+La collecte des métriques Windows était initialement prévue via WinRM
+(Windows Remote Management) avec le module PowerShell PSWSMan installé
+dans le container Docker.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PROBLÈME 1 — WinRM : Basic auth bloquée sur HTTP (port 5985)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION
+-----------
+La première approche utilisait WinRM sur HTTP (port 5985) avec
+l'authentification Basic. Le code PowerShell était :
+
+  Invoke-Command -ComputerName 192.168.23.145 -Port 5985
+                 -Credential $cred -Authentication Basic
+                 -ScriptBlock { hostname }
+
+ERREUR OBTENUE
+--------------
+  "Basic authentication is not supported over HTTP on Unix."
+
+EXPLICATION
+-----------
+PSWSMan, la bibliothèque qui remplace le client WinRM natif sur Linux,
+interdit explicitement l'authentification Basic sur HTTP non chiffré.
+C'est une décision de sécurité : les identifiants seraient transmis en
+clair sur le réseau.
+
+TENTATIVE DE SOLUTION
+---------------------
+Passer sur WinRM HTTPS (port 5986) pour chiffrer le transport.
+Sur le Windows Server, un certificat auto-signé a été créé et un
+listener HTTPS a été configuré :
+
+  New-SelfSignedCertificate -DnsName "192.168.23.145"
+  New-Item WSMan:\localhost\Listener -Transport HTTPS -Address *
+          -CertificateThumbprint <empreinte>
+  Set-Item WSMan:\localhost\Service\Auth\Basic $true
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PROBLÈME 2 — WinRM HTTPS : paramètre -SkipRevocationCheck inexistant
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION
+-----------
+Pour utiliser un certificat auto-signé avec WinRM HTTPS, il faut désactiver
+la vérification du certificat côté client. Le code utilisait :
+
+  $so = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
+
+ERREUR OBTENUE
+--------------
+  "A parameter cannot be found that matches parameter name
+   'SkipRevocationCheck'."
+
+EXPLICATION
+-----------
+Le paramètre -SkipRevocationCheck n'existe pas dans PowerShell 7 sur Linux
+(PSWSMan). Il est spécifique à Windows PowerShell 5 et à PowerShell 7 sur
+Windows.
+
+SOLUTION
+--------
+Suppression du paramètre -SkipRevocationCheck. La ligne est devenue :
+
+  $so = New-PSSessionOption -SkipCACheck -SkipCNCheck
+
+Cela suffit pour ignorer l'autorité de certification (CA) inconnue et la
+non-correspondance du nom commun (CN) du certificat auto-signé.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PROBLÈME 3 — WinRM HTTPS : connexion qui tourne sans fin (timeout)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION
+-----------
+Après correction du paramètre, la commande Invoke-Command avec -UseSSL
+ne répondait jamais. L'API retournait après 65 secondes :
+
+  { "ok": false, "error": "Timeout de récupération distante." }
+
+Un test manuel depuis le container Docker a confirmé le problème :
+
+  pwsh -NoProfile -File /tmp/test-winrm.ps1
+  > PSWSMan loaded
+  > ERROR: The WS-Management service cannot complete the operation
+            within the time specified.
+
+ANALYSE
+-------
+Le port 5986 était bien ouvert et joignable depuis la VM (confirmé par
+un test TCP). La connexion TLS s'établissait, mais le service WinRM
+côté Windows ne répondait pas aux requêtes SOAP de PSWSMan dans le
+délai imparti.
+
+Cette incompatibilité entre PSWSMan (implémentation Linux) et le listener
+WinRM HTTPS du Contrôleur de Domaine Windows n'était pas trivialement
+corrigeable sans changer d'architecture.
+
+DÉCISION
+--------
+Abandonner WinRM et adopter une approche basée sur SSH, plus fiable et
+déjà éprouvée pour la supervision Linux dans MasterMonitor.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NOUVELLE APPROCHE : SSH + PowerShell sur Windows
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PRINCIPE
+--------
+Plutôt que d'utiliser WinRM, on installe OpenSSH Server sur le Windows
+Server. Le container Docker peut alors se connecter en SSH exactement
+comme pour les serveurs Linux, et exécuter des commandes PowerShell à
+distance.
+
+INSTALLATION SUR LE WINDOWS SERVER
+-----------------------------------
+  # Installer OpenSSH Server (Windows Server 2019+)
+  Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+  Start-Service sshd
+  Set-Service -Name sshd -StartupType 'Automatic'
+
+  # Ouvrir le port 22 dans le pare-feu
+  New-NetFirewallRule -Name sshd -DisplayName 'OpenSSH Server'
+                      -Enabled True -Direction Inbound
+                      -Protocol TCP -Action Allow -LocalPort 22
+
+Le port 22 s'est révélé accessible depuis la VM (test TCP réussi).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PROBLÈME 4 — Création du compte utilisateur sur un Contrôleur de Domaine
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION
+-----------
+Pour la supervision, un compte dédié "monitor" a été créé. Les commandes
+habituelles d'ajout à un groupe local ont échoué :
+
+  net localgroup Administrators monitor /add
+  > Erreur système 1376 : Le groupe local spécifié n'existe pas.
+
+  net localgroup Administrateurs monitor /add
+  > Erreur système 1317 : Le compte spécifié n'existe pas.
+
+EXPLICATION
+-----------
+Sur un Contrôleur de Domaine Active Directory, il n'existe pas de groupes
+locaux au sens habituel. La base de comptes locale (SAM) est remplacée par
+Active Directory. Tous les comptes et groupes sont des objets de domaine.
+
+De plus, le Windows Server étant en français, les noms des groupes intégrés
+sont traduits. "Domain Admins" s'appelle "Admins du domaine".
+
+SOLUTION
+--------
+  # Créer l'utilisateur (en tant que compte de domaine)
+  net user monitor Azerty1234@ /add
+
+  # Lister les groupes pour trouver le bon nom
+  net group /domain
+  > *Admins du domaine
+  > *Utilisateurs du domaine
+  > ...
+
+  # Ajouter au groupe domaine avec le bon nom
+  net group "Admins du domaine" monitor /add /domain
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PROBLÈME 5 — SSH : "Invalid user monitor"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION
+-----------
+Après installation d'OpenSSH Server, une tentative de connexion SSH
+avec le simple nom d'utilisateur échouait :
+
+  sshpass -p 'Azerty1234@' ssh monitor@192.168.23.145 hostname
+  > Permission denied (publickey,password,keyboard-interactive).
+
+Les logs OpenSSH sur Windows confirmaient :
+
+  sshd: Invalid user monitor from 192.168.23.153 port 49680
+  sshd: Failed password for invalid user monitor
+
+EXPLICATION
+-----------
+Le compte "monitor" est un compte de DOMAINE, pas un compte local.
+OpenSSH Server sur Windows ne le trouve pas avec le nom seul "monitor".
+Il faut spécifier le domaine pour que Windows comprenne de quel compte
+il s'agit.
+
+SOLUTION
+--------
+Utiliser le format UPN (User Principal Name) qui inclut le domaine :
+
+  monitor@monitor.local
+
+La connexion SSH utilise l'option -l pour spécifier ce nom complet :
+
+  sshpass -p 'Azerty1234@' ssh -l 'monitor@monitor.local'
+          192.168.23.145 hostname
+  > WIN-MASTERMONITOR   ✓
+
+Le nom de domaine "monitor.local" est celui configuré lors de la
+promotion du serveur en Contrôleur de Domaine.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PROBLÈME 6 — Exécution de commandes PowerShell via SSH : problème de quotes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION
+-----------
+Pour récupérer les métriques, le container envoie des commandes PowerShell
+au Windows Server via SSH. Ces commandes contiennent des guillemets doubles,
+des guillemets simples et des dollars, ce qui pose des problèmes d'échappement
+à travers les couches suivantes :
+
+  1. Template literal TypeScript/JavaScript
+  2. Shell Linux (sh/ash) via exec()
+  3. Client SSH
+  4. Serveur SSH Windows (cmd.exe)
+  5. PowerShell
+
+Exemple de commande problématique :
+  Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
+
+SOLUTION : ENCODAGE BASE64 UTF-16LE
+------------------------------------
+PowerShell supporte le paramètre -EncodedCommand qui accepte un script
+encodé en base64 (UTF-16LE). Cela évite TOUS les problèmes de quotes car
+le script encodé ne contient que des caractères alphanumériques, + / et =.
+
+En TypeScript (Node.js), l'encodage se fait ainsi :
+
+  const psScript = [
+    '$cpu = [Math]::Round((Get-CimInstance Win32_Processor | ...).Average, 2)',
+    '$os = Get-CimInstance Win32_OperatingSystem',
+    '$disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID=\'C:\'"',
+    '$memTotal = $os.TotalVisibleMemorySize * 1024',
+    '$memFree = $os.FreePhysicalMemory * 1024',
+    '$uptime = [int](New-TimeSpan -Start $os.LastBootUpTime -End (Get-Date)).TotalSeconds',
+    'Write-Output $env:COMPUTERNAME',
+    'Write-Output $uptime',
+    'Write-Output $cpu',
+    'Write-Output "$memTotal $memFree"',
+    'Write-Output "$($disk.Size) $($disk.FreeSpace)"',
+  ].join('; ');
+
+  // Encodage UTF-16LE → base64 (format attendu par PowerShell)
+  const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+
+  // Commande finale envoyée via SSH
+  const remoteCmd = `powershell.exe -NoProfile -NonInteractive
+                     -EncodedCommand ${encoded}`;
+
+Le script PowerShell produit 5 lignes de sortie :
+  - Ligne 1 : Nom de la machine (ex: WIN-MASTERMONITOR)
+  - Ligne 2 : Uptime en secondes (ex: 86400)
+  - Ligne 3 : CPU en % (ex: 3.56)
+  - Ligne 4 : RAM totale et libre en octets (ex: 17179869184 8589934592)
+  - Ligne 5 : Disque total et libre en octets (ex: 107374182400 53687091200)
+
+Ce format est identique à celui utilisé pour les serveurs Linux, ce qui
+permet de réutiliser la même fonction de parsing (parseSshOutput).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PROBLÈME 7 — Erreurs de compilation TypeScript après suppression de WinRM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESCRIPTION
+-----------
+En remplaçant le code WinRM par le code SSH, plusieurs variables et
+fonctions sont devenues inutilisées. Next.js compile avec TypeScript en
+mode strict (noUnusedLocals), ce qui provoque des erreurs de build :
+
+  Type error: 'MM_REMOTE_USER' is declared but its value is never read.
+  Type error: 'escapePsSingleQuoted' is declared but its value is never read.
+
+SOLUTION
+--------
+Suppression de tous les éléments liés à l'ancienne approche WinRM :
+
+  Variables supprimées  : MM_REMOTE_USER, MM_REMOTE_PASS,
+                          REMOTE_METRICS_TIMEOUT_MS
+  Fonctions supprimées  : runPowerShell(), escapePsSingleQuoted()
+  Constantes supprimées : PS_EXE
+  Imports supprimés     : writeFileSync, unlinkSync (fs),
+                          join (path), tmpdir (os), randomUUID (crypto)
+
+Après nettoyage, le build TypeScript s'est terminé sans erreur.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SOLUTION FINALE : ARCHITECTURE SSH UNIFIÉE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+La supervision Windows utilise désormais la même infrastructure SSH que
+pour Linux. Voici le flux complet :
+
+  Container Docker Alpine
+       │
+       │  sshpass -e ssh -o StrictHostKeyChecking=no
+       │           -l 'monitor@monitor.local'
+       │           192.168.23.145
+       │           'powershell.exe -NoProfile -NonInteractive
+       │            -EncodedCommand <base64>'
+       │
+       ▼
+  Windows Server (OpenSSH)
+       │
+       │  cmd.exe /c powershell.exe -EncodedCommand <base64>
+       │
+       ▼
+  Résultat (5 lignes texte)
+       │
+       ▼
+  parseSshOutput() → { cpu, memory, disk, uptime, ... }
+       │
+       ▼
+  Réponse JSON : { ok: true, host: "WIN-MASTERMONITOR",
+                   cpu: 3.56, memory: 42.1, disk: 67.3,
+                   uptime: 86400, ... }
+
+VARIABLES D'ENVIRONNEMENT
+-------------------------
+  Fichier .env.local sur la VM (~/mastermonitor/.env.local) :
+
+  MM_SSH_USER=app1               # Utilisateur SSH pour les serveurs Linux
+  MM_SSH_PASS=Azerty1234@        # Mot de passe SSH (Linux et Windows)
+  MM_WIN_SSH_USER=monitor@monitor.local  # Utilisateur SSH pour Windows
+
+  Le mot de passe Windows (MM_WIN_SSH_PASS) n'est pas défini séparément :
+  le code utilise MM_SSH_PASS comme valeur de repli.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TABLEAU RÉCAPITULATIF DES PROBLÈMES ET SOLUTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  N°  Problème                              Cause                  Solution
+  ─── ───────────────────────────────────── ────────────────────── ─────────────────────────────────
+  1   Basic auth bloquée sur HTTP           PSWSMan interdit HTTP   Passer en HTTPS (port 5986)
+  2   -SkipRevocationCheck inexistant       Param Windows only     Suppression du paramètre
+  3   WinRM HTTPS timeout (65 secondes)     Incompatibilité        Abandon WinRM → SSH
+  4   Groupes locaux inexistants sur DC     Pas de SAM sur DC      net group /domain (groupes AD)
+  5   "Invalid user monitor" dans SSH       Compte domaine         Format UPN monitor@monitor.local
+  6   Problèmes de quotes PowerShell/SSH    Multi-niveaux shell    -EncodedCommand + base64 UTF-16LE
+  7   Erreurs TypeScript variables inutiles noUnusedLocals strict  Nettoyage des imports WinRM
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  RÉSULTAT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+L'endpoint de supervision Windows répond désormais correctement :
+
+  GET /api/system/remote-metrics?host=192.168.23.145&type=windows
+
+  Réponse :
+  {
+    "ok": true,
+    "host": "WIN-MASTERMONITOR",
+    "cpu": 3.56,
+    "memory": 42.10,
+    "disk": 67.30,
+    "uptime": 86400,
+    "diskTotal": 107374182400,
+    "diskFree": 35433480192,
+    "memTotal": 17179869184,
+    "memFree": 9932111872,
+    "stoppedServices": []
+  }
+
+La page Serveurs de MasterMonitor affiche maintenant les métriques du
+Contrôleur de Domaine Windows en temps réel, de la même manière que
+pour les serveurs Linux.
+
+================================================================================
+  FIN DU DOCUMENT
+================================================================================

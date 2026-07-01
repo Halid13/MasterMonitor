@@ -1,46 +1,11 @@
 import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
-import { writeFileSync, unlinkSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
-import { randomUUID } from 'crypto';
 import { captureSystemEvents } from '@/services/eventCapture';
 import { persistMonitoringSnapshot } from '@/lib/monitoring-db';
 
-const { MM_REMOTE_USER, MM_REMOTE_PASS, MM_SSH_USER, MM_SSH_PASS } = process.env;
-const REMOTE_METRICS_TIMEOUT_MS = (() => {
-  const raw = Number(process.env.MM_REMOTE_TIMEOUT_MS || '65000');
-  if (!Number.isFinite(raw)) return 65_000;
-  return Math.max(10_000, Math.min(180_000, Math.floor(raw)));
-})();
+const { MM_SSH_USER, MM_SSH_PASS } = process.env;
 
 const isSafeHost = (value: string) => /^[a-zA-Z0-9._:-]+$/.test(value);
-const escapePsSingleQuoted = (value: string) => value.replace(/'/g, "''");
-
-// Sur Linux le binaire s'appelle pwsh, sur Windows powershell.exe
-const PS_EXE = process.platform === 'win32' ? 'powershell.exe' : 'pwsh';
-
-// ─── Windows : PowerShell WinRM/CIM ──────────────────────────────────────────
-
-const runPowerShell = (command: string) =>
-  new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-    const tmpFile = join(tmpdir(), `ps-${Date.now()}-${randomUUID()}.ps1`);
-    try {
-      writeFileSync(tmpFile, command, 'utf8');
-      exec(
-        `${PS_EXE} -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`,
-        { maxBuffer: 1024 * 1024, encoding: 'utf8', timeout: REMOTE_METRICS_TIMEOUT_MS },
-        (err, stdout, stderr) => {
-          try { unlinkSync(tmpFile); } catch {}
-          if (err) return reject({ err, stdout, stderr });
-          resolve({ stdout: stdout || '', stderr: stderr || '' });
-        },
-      );
-    } catch (error) {
-      try { unlinkSync(tmpFile); } catch {}
-      reject(error);
-    }
-  });
 
 // ─── Linux : SSH + commandes shell ───────────────────────────────────────────
 
@@ -129,6 +94,59 @@ function parseSshOutput(stdout: string, host: string): LinuxMetrics {
   };
 }
 
+// ─── Windows : SSH + PowerShell ──────────────────────────────────────────────
+
+const runSshWindowsMetrics = (host: string): Promise<LinuxMetrics> =>
+  new Promise((resolve, reject) => {
+    const sshUser = (process.env.MM_WIN_SSH_USER || MM_SSH_USER || 'Administrator').replace(/'/g, '');
+    const sshPass = process.env.MM_WIN_SSH_PASS || MM_SSH_PASS || '';
+
+    // Script PowerShell encodé UTF-16LE (base64) pour éviter les problèmes de quotes via SSH
+    const psScript = [
+      '$cpu = [Math]::Round((Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average, 2)',
+      '$os = Get-CimInstance Win32_OperatingSystem',
+      "$disk = Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='C:'\"",
+      '$memTotal = $os.TotalVisibleMemorySize * 1024',
+      '$memFree = $os.FreePhysicalMemory * 1024',
+      '$uptime = [int](New-TimeSpan -Start $os.LastBootUpTime -End (Get-Date)).TotalSeconds',
+      'Write-Output $env:COMPUTERNAME',
+      'Write-Output $uptime',
+      'Write-Output $cpu',
+      'Write-Output "$memTotal $memFree"',
+      'Write-Output "$($disk.Size) $($disk.FreeSpace)"',
+    ].join('; ');
+
+    const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+    const remoteCmd = `powershell.exe -NoProfile -NonInteractive -EncodedCommand ${encoded}`;
+
+    const tryExec = (cmd: string, env: NodeJS.ProcessEnv, cb: (err: any, out: string) => void) => {
+      exec(cmd, { timeout: 30_000, encoding: 'utf8', env }, (err, stdout, stderr) => {
+        if (err) return cb({ err, stdout, stderr }, '');
+        cb(null, stdout);
+      });
+    };
+
+    const sshBaseOpts = `-o StrictHostKeyChecking=no -o ConnectTimeout=10`;
+
+    if (sshPass) {
+      const sshPassCmd = `sshpass -e ssh ${sshBaseOpts} -l '${sshUser}' ${host} '${remoteCmd}'`;
+      tryExec(sshPassCmd, { ...process.env, SSHPASS: sshPass }, (err, out) => {
+        if (!err) return resolve(parseSshOutput(out, host));
+        const sshCmd = `ssh ${sshBaseOpts} -o BatchMode=yes -l '${sshUser}' ${host} '${remoteCmd}'`;
+        tryExec(sshCmd, process.env as NodeJS.ProcessEnv, (err2, out2) => {
+          if (err2) return reject(err2);
+          resolve(parseSshOutput(out2, host));
+        });
+      });
+    } else {
+      const sshCmd = `ssh ${sshBaseOpts} -o BatchMode=yes -l '${sshUser}' ${host} '${remoteCmd}'`;
+      tryExec(sshCmd, process.env as NodeJS.ProcessEnv, (err, out) => {
+        if (err) return reject(err);
+        resolve(parseSshOutput(out, host));
+      });
+    }
+  });
+
 // ─── Handler principal ────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
@@ -184,99 +202,24 @@ export async function GET(request: Request) {
     }
   }
 
-  // ── Chemin Windows (PowerShell WinRM/CIM) ───────────────────────────────────
-  const useExplicitCreds = Boolean(MM_REMOTE_USER && MM_REMOTE_PASS);
-  const psHost = escapePsSingleQuoted(host);
-  const psUser = escapePsSingleQuoted(MM_REMOTE_USER || '');
-  const psPass = escapePsSingleQuoted(MM_REMOTE_PASS || '');
-
-  const ps = `
-Import-Module PSWSMan -ErrorAction SilentlyContinue
-$ErrorActionPreference = 'Stop'
-
-$target = '${psHost}'
-$cred = $null
-if (${useExplicitCreds ? '$true' : '$false'}) {
-  $pass = ConvertTo-SecureString '${psPass}' -AsPlainText -Force
-  $cred = New-Object System.Management.Automation.PSCredential('${psUser}', $pass)
-}
-
-$collect = {
-  $cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
-  $os = Get-CimInstance Win32_OperatingSystem
-  $sys = Get-CimInstance Win32_ComputerSystem
-  $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
-  $memTotal = $os.TotalVisibleMemorySize * 1024
-  $memFree = $os.FreePhysicalMemory * 1024
-  $memUsedPct = if ($memTotal -gt 0) { (($memTotal - $memFree) / $memTotal) * 100 } else { 0 }
-  $diskPct = if ($disk.Size -gt 0) { (($disk.Size - $disk.FreeSpace) / $disk.Size) * 100 } else { 0 }
-  $uptimeSec = (New-TimeSpan -Start $os.LastBootUpTime -End (Get-Date)).TotalSeconds
-  $netCfg = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" | Select-Object -First 1
-  $subnetMask = if ($netCfg -and $netCfg.IPSubnet) { $netCfg.IPSubnet[0] } else { $null }
-  $stoppedSvcs = @(try {
-    Get-CimInstance Win32_Service -Filter "StartMode='Auto' AND State='Stopped'" -ErrorAction SilentlyContinue |
-    Select-Object -First 6 -ExpandProperty Name
-  } catch { })
-  [PSCustomObject]@{
-    ok = $true; host = $sys.Name; cpu = [Math]::Round($cpu, 2); memory = [Math]::Round($memUsedPct, 2)
-    disk = [Math]::Round($diskPct, 2); uptime = [int]$uptimeSec; subnetMask = $subnetMask
-    diskTotal = $disk.Size; diskFree = $disk.FreeSpace; memTotal = $memTotal; memFree = $memFree
-    stoppedServices = @($stoppedSvcs)
-  }
-}
-
-try {
-  if ($cred) {
-    $result = Invoke-Command -ComputerName $target -Credential $cred -Authentication Basic -ScriptBlock $collect -ErrorAction Stop
-  } else {
-    $result = Invoke-Command -ComputerName $target -Authentication Basic -ScriptBlock $collect -ErrorAction Stop
-  }
-  $result | ConvertTo-Json -Compress | Write-Output
-} catch {
-  Write-Output ('ERROR: ' + $_.Exception.Message)
-}
-`;
+  // ── Chemin Windows (SSH + PowerShell) ─────────────────────────────────────
 
   try {
-    const { stdout, stderr } = await runPowerShell(ps);
-
-    if (debug) {
-      console.log('=== DEBUG Remote Metrics ===');
-      console.log('STDOUT:', stdout);
-      console.log('STDERR:', stderr);
-      console.log('============================');
-    }
-
-    const jsonStart = stdout.indexOf('{');
-    const payload = jsonStart >= 0 ? stdout.slice(jsonStart).trim() : '';
-    const data = payload ? JSON.parse(payload) : null;
-
-    if (!data?.ok) {
-      captureSystemEvents.connectivityIssue(host, host, 'WinRM/DCOM', 'Remote metrics returned error');
-      return NextResponse.json(
-        { ok: false, error: 'Erreur de récupération distante.', details: debug ? { stderr, stdout } : 'Aucun détail.' },
-        { status: 500 },
-      );
-    }
-
-    const rawStopped = data.stoppedServices;
-    const stoppedServices: string[] = Array.isArray(rawStopped)
-      ? rawStopped.filter(Boolean)
-      : rawStopped ? [String(rawStopped)] : [];
+    const data = await runSshWindowsMetrics(host);
 
     const responsePayload = {
       ok: true,
-      host: data.host || host,
-      cpu: data.cpu ?? 0,
-      memory: data.memory ?? 0,
-      disk: data.disk ?? 0,
-      uptime: data.uptime ?? 0,
-      subnetMask: data.subnetMask ?? null,
-      diskTotal: data.diskTotal ?? null,
-      diskFree: data.diskFree ?? null,
-      memTotal: data.memTotal ?? null,
-      memFree: data.memFree ?? null,
-      stoppedServices,
+      host: data.host,
+      cpu: data.cpu,
+      memory: data.memory,
+      disk: data.disk,
+      uptime: data.uptime,
+      subnetMask: null,
+      diskTotal: data.diskTotal,
+      diskFree: data.diskFree,
+      memTotal: data.memTotal,
+      memFree: data.memFree,
+      stoppedServices: [] as string[],
     };
 
     try {
@@ -295,9 +238,9 @@ try {
     const rootErr = err?.err || err;
     const message = rootErr?.message || err?.message || 'Unknown error';
     const isTimeout = Boolean(rootErr?.killed) || /timed out|ETIMEDOUT/i.test(String(message));
-    captureSystemEvents.connectivityIssue(host, host, 'WinRM/DCOM', message);
+    captureSystemEvents.connectivityIssue(host, host, 'SSH/Windows', message);
     const details = debug
-      ? { message, stderr: err?.stderr || null, stdout: err?.stdout || null, timeoutMs: REMOTE_METRICS_TIMEOUT_MS, isTimeout }
+      ? { message, stderr: err?.stderr || null, stdout: err?.stdout || null, isTimeout }
       : 'Aucun détail.';
     return NextResponse.json(
       { ok: false, error: isTimeout ? 'Timeout de récupération distante.' : 'Erreur de récupération distante.', details },
