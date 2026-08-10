@@ -1,0 +1,741 @@
+================================================================================
+  MASTERMONITOR — ARCHITECTURE RESEAU ET SYSTEME COMPLETE
+  Documentation technique — Haute Disponibilite, Load Balancing, Docker
+  Redige le 01/07/2026
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PARTIE 1 — PRESENTATION DU PROJET
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MasterMonitor est une plateforme de supervision IT centralisee, developpee avec
+Next.js et TypeScript. Sa mission est de fournir aux equipes systeme et reseau
+une visibilite en temps reel sur l'etat complet de l'infrastructure : serveurs
+physiques et virtuels, equipements reseau, tickets helpdesk, adresses IP,
+comptes utilisateurs et journaux d'evenements.
+
+L'objectif premier est operationnel. Il ne s'agit pas d'un outil de
+demonstration, mais d'un tableau de bord destine a l'exploitation quotidienne,
+concu pour etre toujours disponible, toujours a jour, et accessible depuis
+n'importe quel poste du reseau local sans dependance a un service cloud externe.
+
+L'ensemble de l'infrastructure est deploye en local sur une machine hote unique
+qui heberge six machines virtuelles. Cette contrainte de contexte a directement
+guide les choix d'architecture : chaque VM remplit un role unique et bien isole,
+et aucun service critique ne repose sur un point de defaillance unique. La perte
+d'un noeud ne doit jamais entrainer l'arret du service pour les utilisateurs.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PARTIE 2 — INVENTAIRE DES MACHINES VIRTUELLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+L'infrastructure repose sur six machines virtuelles Debian 12 et Windows Server
+deployees sur un hyperviseur local, toutes connectees au meme sous-reseau LAN
+192.168.23.0/24 et integrees au domaine Active Directory monitor.local.
+
+La premiere VM (192.168.23.145) heberge DC1, le controleur de domaine primaire
+sous Windows Server. Elle gere l'annuaire Active Directory, l'authentification
+LDAP et le service DNS primaire. La deuxieme VM (192.168.23.146) heberge DC2,
+le controleur de domaine secondaire, qui maintient une replique synchronisee
+de l'annuaire et assure la continuite du DNS et de l'authentification si DC1
+venait a tomber.
+
+La troisieme VM (192.168.23.147) est dediee a PostgreSQL en mode primaire. Elle
+accepte toutes les ecritures et lectures de l'application. La quatrieme VM
+(192.168.23.148) heberge le replica PostgreSQL qui recoit en continu la
+replication streaming depuis le primaire, ainsi que le service de collecte de
+monitoring qui tourne de facon autonome en tant que service systemd.
+
+La cinquieme VM (192.168.23.153) heberge MasterMonitor Instance 1 sous forme
+de container Docker, ainsi que Nginx configure en load balancer MASTER avec
+Keepalived. La sixieme VM (192.168.23.155) heberge MasterMonitor Instance 2 de
+la meme facon, avec Nginx configure en BACKUP Keepalived.
+
+L'adresse IP virtuelle 192.168.23.200 est l'unique point d'entree des
+utilisateurs. Elle est portee par App1 en fonctionnement normal et bascule
+automatiquement sur App2 en cas de panne.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PARTIE 3 — SCHEMA D'ARCHITECTURE GLOBAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Utilisateurs LAN (postes clients)
+       │
+       │  http://192.168.23.200/login
+       ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │  VIP Keepalived : 192.168.23.200                            │
+  │  Portee par App1 (MASTER) ou App2 (BACKUP) selon etat       │
+  └──────────────────┬──────────────────────────────────────────┘
+                     │
+          ┌──────────┴──────────┐
+          ▼                     ▼
+  ┌──────────────┐       ┌──────────────┐
+  │  Nginx App1  │       │  Nginx App2  │
+  │ 192.168.23.153│       │192.168.23.155│
+  │  (MASTER LB) │       │  (BACKUP LB) │
+  └──────┬───────┘       └──────┬───────┘
+         │                      │
+         └──────────┬───────────┘
+                    │  least_conn
+          ┌─────────┴──────────┐
+          ▼                    ▼
+  ┌──────────────┐     ┌──────────────┐
+  │   App1       │     │   App2       │
+  │  Next.js     │     │  Next.js     │
+  │  port 3000   │     │  port 3000   │
+  │  (Docker)    │     │  (Docker)    │
+  └──────┬───────┘     └──────┬───────┘
+         │                    │
+         └──────────┬─────────┘
+                    │
+         ┌──────────┴──────────┐
+         ▼                     ▼
+  ┌──────────────┐     ┌──────────────┐
+  │  PG Primaire │     │  AD / LDAP   │
+  │ 192.168.23.147│    │  DC1 + DC2   │
+  │  (ecritures) │     │ .145 / .146  │
+  └──────────────┘     └──────────────┘
+         │
+         │ replication streaming
+         ▼
+  ┌──────────────────────────┐
+  │  PG Replica              │
+  │  192.168.23.148          │
+  │  + Service collecte      │
+  │    monitoring (systemd)  │
+  └──────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PARTIE 3 — HAUTE DISPONIBILITE (HA)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3.1 — Principe general
+
+Le principe fondateur de la haute disponibilite dans ce projet est simple :
+aucun service critique ne repose sur un seul noeud. Pour chaque composant
+essentiel, une redondance est prevue et testee. Si un noeud tombe, le service
+continue sans intervention manuelle et sans coupure perceptible pour
+l'utilisateur final.
+
+Ce principe s'applique a quatre niveaux independants : le point d'entree reseau
+(VIP), la couche applicative (les deux instances), la couche identite (AD/DNS)
+et la couche donnees (PostgreSQL). La panne d'un element a l'un de ces niveaux
+ne provoque pas d'effet en cascade sur les autres.
+
+3.2 — Haute disponibilite du point d'entree (VIP + Keepalived)
+
+Le probleme classique d'une architecture a load balancer unique est que ce
+dernier devient lui-meme un point de defaillance unique, appele SPOF (Single
+Point Of Failure). Si la VM qui porte le seul Nginx tombe, tout le trafic est
+coupe meme si les applications backends sont parfaitement saines.
+
+Pour eliminer ce SPOF, un Nginx a ete installe sur chaque VM applicative,
+et Keepalived a ete configure pour gerer une adresse IP virtuelle (VIP :
+192.168.23.200) qui flotte dynamiquement entre les deux noeuds selon leur etat
+de sante. App1 est le noeud MASTER avec une priorite de 100 : il porte la VIP
+en fonctionnement normal. App2 est le noeud BACKUP avec une priorite de 90 :
+il surveille App1 en permanence via le protocole VRRP.
+
+Keepalived execute un script de verification toutes les deux secondes pour
+confirmer que Nginx est actif sur le noeud courant. Si trois verifications
+consecutives echouent, la VIP est transferee automatiquement vers App2 en
+moins de six secondes. Quand App1 revient a la normale, la VIP lui est
+restituee automatiquement grace a la preemption activee. L'utilisateur ne
+change jamais d'URL, ne voit aucune interruption, et aucune intervention
+humaine n'est necessaire.
+
+3.3 — Haute disponibilite applicative
+
+MasterMonitor tourne sur les deux VM sous forme de containers Docker. Chaque
+Nginx connait les deux backends applicatifs et peut envoyer les requetes vers
+l'un ou l'autre. Si un container crashe ou ne repond plus, Nginx le detecte
+apres trois echecs consecutifs et retire temporairement ce backend du pool
+pendant dix secondes. L'autre instance continue a servir l'integralite du
+trafic sans interruption. Une fois le container retabli, Nginx le reintegre
+automatiquement dans la rotation.
+
+3.4 — Haute disponibilite de l'identite (Active Directory / DNS)
+
+Deux controleurs de domaine Windows Server sont en place. DC1 sur
+192.168.23.145 est le controleur primaire et gere le DNS primaire. DC2 sur
+192.168.23.146 est le controleur secondaire avec son propre service DNS. La
+replication Active Directory entre les deux est automatique et bidirectionnelle.
+
+Les deux instances MasterMonitor s'authentifient via LDAP sur DC1 en priorite.
+Si DC1 est indisponible, la resolution DNS bascule vers DC2 et l'authentification
+continue sans modification applicative. La resilience est entierement portee par
+la couche AD/DNS elle-meme, ce qui est la force de ce mecanisme : l'application
+n'a rien a gerer, elle beneficie de la redondance de l'annuaire de facon
+transparente.
+
+3.5 — Haute disponibilite des donnees (PostgreSQL)
+
+La base de donnees est le composant le plus critique car elle centralise les
+metriques de supervision, les logs, les tickets, les alertes et toutes les
+donnees metier. Deux noeuds PostgreSQL sont deployes sur des VM distinctes.
+
+Le primaire sur 192.168.23.147 accepte toutes les ecritures et les lectures
+de l'application. Le replica sur 192.168.23.148 recoit en continu la
+replication streaming depuis le primaire via le mecanisme WAL (Write-Ahead Log)
+natif de PostgreSQL. Le lag de replication est de l'ordre de quelques
+millisecondes en reseau local, ce qui garantit une quasi-synchronisation
+permanente. En cas de panne du primaire, le replica peut etre promu en nouveau
+primaire selon une procedure de bascule prevue et testee. Les instances
+applicatives reprennent alors leurs connexions vers le nouvel hote primaire.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PARTIE 4 — LOAD BALANCING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4.1 — Algorithme de repartition
+
+L'algorithme de repartition retenu est least_conn, soit la connexion minimale.
+Nginx envoie chaque nouvelle requete vers le backend qui possede le moins de
+connexions actives a cet instant precis. Ce choix est deliberement plus
+adapte qu'un simple round-robin pour une application comme MasterMonitor, car
+les requetes n'ont pas toutes la meme duree : une requete de page se regle en
+quelques dizaines de millisecondes, tandis qu'une connexion SSE de supervision
+en temps reel peut rester ouverte pendant plusieurs heures. Le round-robin
+enverrait mecaniquement la meme proportion vers chaque backend sans tenir
+compte de leur charge reelle, tandis que least_conn equilibre dynamiquement
+en fonction de l'etat instantane de chaque noeud.
+
+4.2 — Configuration Nginx et parametres cles
+
+Les deux Nginx sur App1 et App2 ont une configuration identique pour garantir
+que la bascule de la VIP n'entraine aucune difference de comportement pour
+l'utilisateur. Les deux backends, 127.0.0.1:3000 (local) et
+192.168.23.155:3000 (distant), sont declares dans le meme bloc upstream avec
+des parametres de sante identiques : max_fails a 3 et fail_timeout a 10
+secondes. Cela signifie que Nginx attend trois echecs consecutifs avant de
+considerer un backend comme indisponible, puis lui laisse dix secondes pour
+se retablir avant de le reintegrer dans le pool.
+
+Plusieurs parametres ont ete soigneusement choisis pour les specificites de
+MasterMonitor. Le proxy_buffering est desactive, ce qui est indispensable pour
+les flux SSE (Server-Sent Events) qui transmettent les metriques en continu.
+Si le buffering etait actif, Nginx accumulerait les evenements SSE au lieu de
+les transmettre immediatement, brisant ainsi la perception du temps reel.
+Le proxy_read_timeout est fixe a 3600 secondes car les connexions SSE peuvent
+rester ouvertes toute une session de travail. La directive keepalive a 32
+permet la reutilisation des connexions TCP entre Nginx et les backends, ce qui
+reduit la latence et la charge liee aux etablissements de connexion repetes.
+
+4.3 — Traçabilite et gestion des sessions
+
+Les headers X-Real-IP et X-Forwarded-For sont systematiquement transmis aux
+backends pour que les instances Next.js connaissent l'IP reelle du client meme
+en passant par le proxy. Ces informations sont essentielles pour la
+journalisation correcte des connexions et des actions utilisateur.
+
+La gestion des sessions merite une attention particuliere en architecture
+multi-instances. MasterMonitor utilise des cookies HTTP (mm_auth, mm_user,
+mm_role) emis par Next.js lors de la connexion. Ces cookies sont construits
+a partir de la meme configuration partagee et valides en base de donnees
+commune. N'importe quelle instance peut donc lire et valider un cookie cree
+par l'autre, ce qui rend l'affinite de session (sticky session) inutile.
+La repartition est entierement libre entre les deux backends.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PARTIE 5 — GESTION DES INSTANCES DOCKER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+5.1 — Pourquoi Docker
+
+Docker a ete retenu comme solution de containerisation pour plusieurs raisons
+complementaires. La premiere est l'isolation stricte de l'environnement
+d'execution : Node.js, les dependances npm et le code compile sont encapsules
+dans l'image, independamment de l'etat de la VM hote. La deuxieme est la
+reproductibilite entre les deux instances : la meme image Docker est deployee
+sur App1 et App2, ce qui elimine toute divergence d'environnement et garantit
+un comportement identique sur les deux noeuds. La troisieme est la simplicite
+des mises a jour : un nouveau build produit une nouvelle image qui est
+substituee au container existant en quelques secondes via docker compose
+up --force-recreate, sans modifier la VM hote. Enfin, l'image Alpine utilisee
+comme base est minimale, ce qui reduit la surface d'attaque.
+
+5.2 — Build multi-stage
+
+Le Dockerfile exploite le mecanisme de build multi-stage de Docker. Le premier
+stage, appele builder, installe l'integralite des dependances npm y compris les
+devDependencies et compile l'application Next.js (next build). Le second stage,
+appele runner, repart d'une image Node 22 Alpine propre et ne copie que le
+resultat de la compilation et les dependances de production. L'image finale
+pese environ 78 Mo et ne contient ni code source brut, ni outils de build,
+ni dependances de developpement. Ce choix ameliore simultanement les
+performances de transfert, la securite et la clarte du deploiement.
+
+5.3 — Configuration Docker Compose et choix techniques
+
+La configuration Docker Compose utilise network_mode host, ce qui signifie que
+le container partage directement la pile reseau de la VM hote. Ce choix a ete
+fait de facon deliberee pour un contexte de reseau local maitrise : il permet
+au container d'atteindre Active Directory, PostgreSQL et les serveurs supervises
+sans NAT, sans configuration de ports a exposer, et sans risque de conflit de
+routage. Le container beneficie de la meme connectivite que la VM elle-meme.
+
+Le mode restart unless-stopped garantit que le container redemarrera
+automatiquement apres un crash ou un reboot de la VM, sans intervention humaine.
+La capability NET_RAW est ajoutee pour autoriser les operations ICMP (ping)
+utilisees par le module de supervision reseau. Les secrets d'environnement
+(mots de passe LDAP, PostgreSQL, SSH) sont injectes via un fichier .env.local
+stocke sur la VM avec les permissions 600, jamais integre dans l'image ni
+commite dans le depot Git.
+
+5.4 — Processus de deploiement automatise
+
+Le deploiement des deux instances est entierement automatise via le script
+deploy.ps1 execute depuis le poste de developpement Windows. Ce script enchaîne
+cinq etapes sans intervention : la construction de l'image Docker en local,
+son export en fichier tar, le transfert vers la VM cible via SCP, le chargement
+de l'image sur la VM via SSH, puis le remplacement du container avec docker
+compose down et up. L'appel differe uniquement par le parametre VM et User :
+.\deploy.ps1 -VM "192.168.23.153" -User "app1" pour Instance 1, et
+.\deploy.ps1 -VM "192.168.23.155" -User "app2" pour Instance 2. Ce processus
+garantit que les deux noeuds tournent exactement la meme version du code,
+construite depuis le meme Dockerfile, au meme instant.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PARTIE 6 — FLUX DE COMMUNICATION ENTRE LES SERVICES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+6.1 — Flux d'authentification utilisateur
+
+Lorsqu'un utilisateur acceede a http://192.168.23.200/login et soumet ses
+identifiants, la requete HTTP POST atteint la VIP Keepalived, qui la dirige
+vers le Nginx du noeud porteur. Nginx la transfère au backend Next.js disponible
+selon l'algorithme least_conn. Le serveur Next.js initie alors une connexion
+LDAP vers DC1 sur le port 389, recherche le compte utilisateur par son
+sAMAccountName ou son UPN, et si l'utilisateur est trouve, tente une
+authentification avec le mot de passe fourni.
+
+En cas de succes, Next.js recupere les groupes AD de l'utilisateur et determine
+son role en comparant ces groupes a la liste LDAP_ADMIN_GROUPS configuree.
+Il ecrit un log de connexion dans PostgreSQL primaire, puis renvoie une reponse
+HTTP avec trois cookies : mm_auth qui confirme la session, mm_user qui contient
+le nom d'affichage, et mm_role qui porte le role attribue. Le navigateur est
+ensuite redirige vers le tableau de bord.
+
+6.2 — Flux de supervision en temps reel
+
+Le tableau de bord ouvre une connexion SSE (Server-Sent Events) persistante
+vers /api/monitoring/stream. Cette connexion traverse Nginx avec le buffering
+desactive et reste ouverte tant que la session est active. Cote serveur, Next.js
+interroge PostgreSQL toutes les cinq secondes et envoie un snapshot JSON des
+metriques (CPU, RAM, disque, statuts, alertes, ping) directement dans le flux SSE.
+
+En parallele, le service de collecte qui tourne sur la VM du replica PostgreSQL
+se connecte periodiquement en SSH vers chaque serveur supervise, execute les
+commandes de mesure et insere les resultats dans PostgreSQL primaire. Ce service
+est independant de toute session utilisateur : les metriques sont mises a jour
+meme si personne n'est connecte au dashboard, ce qui garantit la fraicheur des
+donnees a tout moment.
+
+6.3 — Flux de supervision des serveurs distants
+
+Quand le dashboard demande les metriques d'un serveur distant via l'endpoint
+/api/system/remote-metrics, le container Next.js etablit une connexion SSH
+vers le serveur cible. Pour un serveur Linux, des commandes shell standards
+(awk sur /proc/stat, df, free) sont executees et leur sortie est parsee. Pour
+un serveur Windows, un script PowerShell est encode en base64 UTF-16LE avant
+transmission pour eviter tout probleme d'echappement a travers les couches
+SSH et cmd.exe. La sortie est normalisee dans les deux cas vers le meme format
+JSON, ce qui permet une affichage uniforme dans l'interface quelle que soit
+la nature du serveur.
+
+6.4 — Flux de replication PostgreSQL
+
+La replication entre le primaire et le replica repose sur le mecanisme WAL
+(Write-Ahead Log) natif de PostgreSQL en mode streaming. Une connexion TCP
+permanente sur le port 5432 est maintenue entre les deux noeuds. Chaque
+transaction validee sur le primaire est transmise au replica en quasi
+temps reel, avec un lag de replication de l'ordre de quelques millisecondes
+en reseau local. Cette approche garantit que le replica est toujours dans
+un etat coherent et pret a etre promu en cas de defaillance du primaire.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PARTIE 7 — ARCHITECTURE APPLICATIVE MASTERMONITOR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+7.1 — Stack technique
+
+MasterMonitor est developpe avec Next.js 16 en mode App Router et React 19.
+TypeScript 5 est utilise en mode strict sur l'integralite du code, ce qui
+impose un typage fort sur toutes les structures de donnees manipulees et
+elimine une large classe d'erreurs de runtime. Tailwind CSS 4 assure le
+styling sans feuille de style personnalisee volumineuse. Zustand 5 gere l'etat
+global du dashboard de facon legere et lisible. La visualisation des metriques
+s'appuie sur Recharts et Lucide React, et l'export des donnees utilise xlsx
+pour produire des fichiers Excel directement depuis le navigateur.
+
+Cote infrastructure, PostgreSQL est le moteur de persistance principal,
+accessible via un pool de connexions configurable. L'authentification est
+deleguee a Active Directory via ldapts. Le temps reel est assure par
+Server-Sent Events, une technologie unidirectionnelle suffisante pour diffuser
+des etats et evenements vers les clients sans la complexite d'un canal
+bidirectionnel WebSocket. Docker Alpine et Nginx 1.22 constituent la couche
+de deploiement, et Keepalived porte la HA au niveau reseau.
+
+7.2 — Organisation du code et responsabilites
+
+Le code est organise selon les conventions Next.js App Router. Le dossier
+src/app contient les pages et les routes API, separant clairement les endpoints
+de donnees des interfaces utilisateur. Le dossier src/lib centralise l'acces
+a PostgreSQL avec un pool de connexions unique partage entre toutes les routes.
+Le dossier src/services heberge le logger structure, les capteurs d'evenements
+et la logique SSE. Le dossier src/store contient l'etat Zustand du dashboard.
+Le schema SQL complet de la base est versionne dans db/schema.sql.
+
+7.3 — Modele de donnees et niveaux de rafraichissement
+
+Les donnees sont organisees en trois niveaux selon leur frequence de variation
+et leur criticite operationnelle. Le niveau temps reel, rafraichi toutes les
+cinq secondes, couvre les metriques CPU, RAM, disque, le statut des services,
+les resultats de ping, les alertes actives et les tickets ouverts. Le niveau
+dynamique, rafraichi toutes les trente secondes, couvre les assignations,
+l'occupation des sous-reseaux et la localisation des equipements. Le niveau
+statique, rafraichi toutes les cinq minutes, couvre l'inventaire, les
+configurations et l'historique.
+
+Ce decoupage evite de surcharger PostgreSQL avec des requetes repetees pour
+des donnees qui changent rarement, tout en maintenant une reactivite maximale
+pour les informations dont la fraicheur est critique en exploitation.
+
+7.4 — Journalisation structuree multi-instances
+
+La journalisation est organisee en quatre categories persistees en PostgreSQL :
+les logs systeme pour les evenements d'infrastructure, les logs utilisateurs
+pour les connexions et deconnexions, les logs d'actions pour les modifications
+de tickets et d'equipements, et les logs de securite pour les echecs
+d'authentification et les acces refuses.
+
+La centralisation des logs en base est une decision d'architecture fondamentale
+dans un contexte multi-instances. Si chaque instance conservait ses logs en
+memoire processus, un utilisateur connecte via App1 ne verrait jamais les
+evenements produits par App2. La base commune est la seule source de verite,
+accessible de facon identique depuis les deux noeuds et independante de l'etat
+de chaque instance.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PARTIE 8 — SECURITE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+8.1 — Gestion des secrets et separation code/donnees
+
+Aucun secret n'est integre dans le code source ni dans l'image Docker. Les
+variables sensibles, notamment les mots de passe LDAP, la chaine de connexion
+PostgreSQL et les identifiants SSH, sont stockees dans le fichier .env.local
+presente sur chaque VM avec les permissions 600, ce qui restreint la lecture
+au seul proprietaire du fichier. Ce fichier est explicitement exclu du depot
+Git. Cette separation garantit que l'image Docker peut etre construite, partagee
+ou archivee sans risque d'exposition des donnees sensibles.
+
+8.2 — Controle d'acces base sur Active Directory
+
+L'authentification est integralement deleguee a Active Directory via LDAP.
+Il n'existe aucun compte local applicatif dans MasterMonitor. Les roles sont
+determines dynamiquement par l'appartenance aux groupes AD configures dans
+LDAP_ADMIN_GROUPS. Un utilisateur membre de ces groupes obtient le role admin,
+les autres membres du domaine obtiennent un acces standard. Ce mecanisme
+garantit la coherence avec la gouvernance des identites deja etablie dans le
+systeme d'information, evite la proliferation de comptes applicatifs locaux et
+facilite la revocation d'acces : retirer un utilisateur d'un groupe AD suffit
+a lui retirer ses droits dans MasterMonitor immediatement.
+
+8.3 — Protection des pages par middleware
+
+Le middleware Next.js intercepte chaque requete vers les pages protegees et
+verifie la presence et la validite du cookie mm_auth. Toute tentative d'acces
+sans cookie valide est redirigee vers la page de connexion. Les routes
+d'administration verifient en plus le cookie mm_role pour restreindre l'acces
+aux seuls utilisateurs avec le role admin.
+
+8.4 — Securite des communications SSH
+
+La supervision des serveurs distants repose sur SSH avec sshpass pour
+l'authentification par mot de passe. Le mot de passe est passe via la variable
+d'environnement SSHPASS et non en argument de commande, evitant ainsi son
+exposition dans la liste des processus systeme. Les scripts PowerShell destines
+aux serveurs Windows sont encodes en base64 UTF-16LE avant transmission, ce
+qui elimine les risques d'injection par manipulation des arguments de commande
+a travers les couches SSH et cmd.exe.
+
+8.5 — Isolation Docker et reduction de surface d'attaque
+
+Chaque instance applicative tourne dans un container isole. La VM hote ne
+contient que Docker, le fichier docker-compose.yml et le fichier .env.local.
+L'image Alpine minimale reduit le nombre de paquets et de binaires presents
+dans l'environnement d'execution, limitant mecaniquement les vecteurs
+d'attaque potentiels.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PARTIE 9 — SCALABILITE ET EVOLUTIVITE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+L'architecture a ete pensee pour evoluer sans refonte. L'ajout d'une troisieme
+instance applicative se resume a deployer la meme image Docker sur une nouvelle
+VM et a ajouter son IP dans le bloc upstream de chaque Nginx, puis a recharger
+Nginx sans interruption de service. L'architecture LB est donc horizontalement
+scalable a cout d'exploitation tres faible.
+
+L'ajout de nouveaux serveurs a superviser ne necessite aucune modification du
+code applicatif. Il suffit d'enregistrer l'IP du serveur en base de donnees et
+de s'assurer que le port SSH 22 est accessible depuis les containers. Aucun
+agent n'est deploye sur les machines supervisees, ce qui simplifie la gestion
+du parc et evite toute dependance applicative sur les serveurs cibles.
+
+Le schema PostgreSQL est versionne dans db/schema.sql. Toute evolution du
+modele de donnees est appliquee via une migration SQL sur le primaire, qui la
+replique automatiquement vers le replica. Les deux instances applicatives voient
+immediatement la nouvelle structure.
+
+Si l'infrastructure devait depasser le cadre du reseau local, les extensions
+naturelles seraient l'ajout d'un certificat TLS sur Nginx, la mise en place de
+Pgbouncer pour le pooling de connexions PostgreSQL, et l'activation de
+sauvegardes automatisees via pg_dump ou pgBackRest sur le replica.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PARTIE 10 — MAINTENANCE ET RESILIENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+10.1 — Mise a jour sans coupure (rolling update)
+
+La mise a jour de l'application peut etre realisee sans aucune interruption de
+service grace a la presence des deux instances. Le processus consiste a mettre
+a jour App2 en premier. Pendant ce temps, Nginx redirige tout le trafic vers
+App1 qui reste operationnelle. Une fois App2 mise a jour et validee, on met a
+jour App1. Pendant ce temps, c'est App2 qui sert l'integralite du trafic.
+Le resultat est un zero downtime total : aucun utilisateur ne subit
+d'interruption.
+
+10.2 — Surveillance continue par Keepalived
+
+Keepalived verifie l'etat de Nginx toutes les deux secondes sur chaque noeud.
+Si trois verifications consecutives echouent, soit un delai de six secondes,
+la bascule de la VIP est declenchee. Deux succes consecutifs suffisent ensuite
+a confirmer le retour a la normale et a restituer la VIP au noeud MASTER.
+Ces valeurs sont calibrees pour eviter les fausses alertes dues a des pics
+de charge transitoires tout en garantissant une reaction rapide en cas de
+veritable panne.
+
+10.3 — Tests de bascule et validation operationnelle
+
+Trois scenarios de panne ont ete testes et valides. Le premier est la panne
+Nginx sur App1 : arreter Nginx sur App1 provoque la migration de la VIP vers
+App2 en moins de six secondes, et le site reste accessible via 192.168.23.200.
+Le deuxieme est la panne du container applicatif App1 : Nginx detecte
+l'indisponibilite du backend local apres trois echecs et redirige tout le
+trafic vers App2 backend. Le troisieme est la panne complete de la VM App1 :
+la VIP migre sur App2, Nginx d'App2 ne connait alors qu'un seul backend
+disponible (local), et le service reste accessible.
+
+Dans chacun de ces scenarios, la reprise est automatique a la remise en service
+du noeud defaillant : la VIP revient sur App1, les deux backends sont
+reintegres dans le pool Nginx, et l'equilibrage reprend normalement.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PARTIE 11 — SYNTHESE DES CHOIX D'ARCHITECTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Le deploiement de deux instances applicatives distinctes est la decision la plus
+structurante du projet. Elle supprime le point de defaillance unique au niveau
+applicatif et rend possible le deploiement sans coupure. Sans cette dualite,
+toute mise a jour ou panne d'une VM entrainerait une interruption totale.
+
+La VIP Keepalived repond au meme besoin, mais au niveau du point d'entree
+reseau. Un seul Nginx sur une seule VM aurait ete insuffisant : si cette VM
+tombait, aucun trafic n'aurait pu atteindre les backends, meme sains. La
+combinaison VIP + double Nginx + double Keepalived garantit la continuite
+de bout en bout.
+
+L'algorithme least_conn a ete prefere au round-robin car MasterMonitor produit
+des requetes de durees tres heterogenes. Le round-robin aurait pu envoyer
+des connexions SSE longue duree et des requetes rapides vers le meme backend
+sans tenir compte de sa charge reelle, au detriment de l'equilibrage effectif.
+
+Docker multi-stage a ete retenu pour sa reproductibilite et sa securite. La
+meme image deployee sur les deux noeuds garantit un comportement identique et
+elimine les divergences d'environnement. Le mode network_mode host est un choix
+delibere pour le reseau local : il supprime la complexite du NAT et rend la
+supervision des services internes directe et fiable.
+
+La centralisation des logs et des metriques en PostgreSQL est indispensable
+en architecture multi-instances. Sans cela, chaque noeud aurait une vision
+partielle de l'activite, les logs seraient fragmentes entre les deux instances,
+et la coherence du tableau de bord ne serait plus garantie.
+
+La supervision par SSH sans agent est universelle et non-intrusive. Elle
+fonctionne sur tous les systemes Linux et Windows sans modification ni
+installation sur les serveurs cibles, ce qui simplifie la gestion du parc et
+reduit les dependances applicatives.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  CONCLUSION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+L'architecture de MasterMonitor traduit une vision d'ingenierie reseau et
+systeme orientee exploitation. Chaque composant a un role clair et isole,
+chaque point de defaillance potentiel dispose d'une redondance, et chaque
+choix technique repose sur une justification operationnelle concrete.
+
+La combinaison Keepalived, double Nginx et double instance Docker assure une
+haute disponibilite complete du point d'entree jusqu'a la couche applicative.
+La centralisation des logs et des metriques en PostgreSQL garantit la coherence
+de la supervision dans un environnement multi-instances. La supervision par SSH
+sans agent offre une compatibilite universelle avec les serveurs Linux et
+Windows du parc.
+
+Cette plateforme est intentionnellement simple a exploiter. Deux commandes
+suffisent a deployer une nouvelle version sur les deux noeuds. Trois commandes
+suffisent a valider l'etat complet de la HA. Les tests de bascule sont
+reproductibles a tout moment sans risque de perte de donnees, ce qui transforme
+la haute disponibilite d'une promesse architecturale en capacite operationnelle
+reellement testee et validee.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SCHEMA D'ARCHITECTURE GLOBAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ╔══════════════════════════════════════════════════════════════════════════╗
+  ║              RESEAU LOCAL LAN — 192.168.23.0/24                          ║
+  ║              Domaine Active Directory : monitor.local                    ║
+  ╚══════════════════════════════════════════════════════════════════════════╝
+
+  ┌──────────────────────┐
+  │   POSTES CLIENTS     │
+  │   (navigateurs LAN)  │
+  └──────────┬───────────┘
+             │
+             │  http://192.168.23.200/login
+             │  (URL unique, toujours la meme)
+             ▼
+  ╔══════════════════════════════════════════════════════════════════════════╗
+  ║  VIP KEEPALIVED — 192.168.23.200/24                                    ║
+  ║  Portee par App1 (MASTER) en fonctionnement normal                     ║
+  ║  Bascule automatique vers App2 (BACKUP) si Nginx App1 defaillant       ║
+  ║  Detection : toutes les 2s — Bascule en < 6s                           ║
+  ╚═════════════════════════╦════════════════════════════════════════════════╝
+                            │
+               ┌────────────┴────────────┐
+               │                         │
+               ▼                         ▼
+  ┌────────────────────────┐  ┌────────────────────────┐
+  │  VM App1               │  │  VM App2               │
+  │  192.168.23.153        │  │  192.168.23.155        │
+  │  Debian 12             │  │  Debian 12             │
+  │  ┌──────────────────┐  │  │  ┌──────────────────┐  │
+  │  │ Keepalived MASTER│  │  │  │ Keepalived BACKUP│  │
+  │  │ priority 100     │  │  │  │ priority 90      │  │
+  │  └────────┬─────────┘  │  │  └────────┬─────────┘  │
+  │           │ surveille  │  │           │ surveille  │
+  │           ▼            │  │           ▼            │
+  │  ┌──────────────────┐  │  │  ┌──────────────────┐  │
+  │  │  Nginx LB        │  │  │  │  Nginx LB        │  │
+  │  │  least_conn      │  │  │  │  least_conn      │  │
+  │  │  port 80         │  │  │  │  port 80         │  │
+  │  └────────┬─────────┘  │  │  └────────┬─────────┘  │
+  │           │            │  │           │            │
+  │  ┌────────▼─────────┐  │  │  ┌────────▼─────────┐  │
+  │  │  Docker Container│  │  │  │  Docker Container│  │
+  │  │  MasterMonitor-1 │  │  │  │  MasterMonitor-2 │  │
+  │  │  Next.js 16      │  │  │  │  Next.js 16      │  │
+  │  │  Node 22 Alpine  │  │  │  │  Node 22 Alpine  │  │
+  │  │  port 3000       │  │  │  │  port 3000       │  │
+  │  │  network: host   │  │  │  │  network: host   │  │
+  │  └──────────────────┘  │  │  └──────────────────┘  │
+  └─────────────┬──────────┘  └─────────────┬──────────┘
+                │                            │
+                │  Chaque Nginx connait      │
+                │  les 2 backends :          │
+                │  127.0.0.1:3000 (local)    │
+                │  + IP_distante:3000        │
+                │                            │
+                └─────────────┬──────────────┘
+                              │
+          ┌───────────────────┼──────────────────────┐
+          │                   │                      │
+          ▼                   ▼                      ▼
+  ┌───────────────┐  ┌────────────────┐  ┌──────────────────────┐
+  │  DC1          │  │  DC2           │  │  PG Primaire         │
+  │ 192.168.23.145│  │ 192.168.23.146 │  │  192.168.23.147      │
+  │  Windows Srv  │  │  Windows Srv   │  │  Debian 12           │
+  │  AD Primaire  │  │  AD Secondaire │  │  PostgreSQL          │
+  │  DNS Primaire │  │  DNS Secondaire│  │  Toutes les ecritures│
+  │  LDAP :389    │  │  LDAP :389     │  │  + lectures app      │
+  └───────┬───────┘  └────────┬───────┘  └──────────┬───────────┘
+          │                   │                      │
+          │  Replication AD   │                      │ WAL streaming
+          │  bidirectionnelle │                      │ replication
+          └─────────┬─────────┘                      │ (quasi temps reel)
+                    │                                 ▼
+                    │                      ┌──────────────────────┐
+                    │                      │  PG Replica          │
+                    │                      │  192.168.23.148      │
+                    │                      │  Debian 12           │
+                    │                      │  PostgreSQL replica  │
+                    │                      │  + Service collecte  │
+                    │                      │    monitoring        │
+                    │                      │    (systemd)         │
+                    │                      └──────────┬───────────┘
+                    │                                 │
+                    │                                 │ SSH vers serveurs
+                    │                                 │ supervises
+                    │                                 ▼
+                    │                      ┌──────────────────────┐
+                    │                      │  Serveurs supervises │
+                    │                      │  Linux  → SSH + sh   │
+                    │                      │  Windows→ SSH + PS   │
+                    │                      │  (awk, df, free,     │
+                    │                      │   PowerShell b64)    │
+                    │                      └──────────────────────┘
+                    │
+                    ▼
+         Authentification LDAP
+         depuis les containers
+         App1 et App2
+
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  LEGENDE DES FLUX                                                   │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │  Client → VIP          : HTTP port 80 (requetes utilisateur)        │
+  │  VIP → Nginx           : routage VRRP Keepalived                    │
+  │  Nginx → Containers    : proxy_pass HTTP port 3000 (least_conn)     │
+  │  Containers → DC1/DC2  : LDAP port 389 (authentification)           │
+  │  Containers → PG Pri   : TCP port 5432 (lectures/ecritures)         │
+  │  PG Pri → PG Rep       : WAL streaming port 5432 (replication)      │
+  │  Collecte → Serveurs   : SSH port 22 (metriques)                    │
+  │  Collecte → PG Pri     : TCP port 5432 (INSERT snapshots)           │
+  │  Keepalived A1 ↔ A2    : VRRP multicast (election MASTER/BACKUP)    │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  COMPORTEMENT EN CAS DE PANNE                                       │
+  ├────────────────────────┬────────────────────────────────────────────┤
+  │  Panne                 │  Consequence                               │
+  ├────────────────────────┼────────────────────────────────────────────┤
+  │  Nginx App1 s'arrete   │  VIP bascule sur App2 en < 6 secondes      │
+  │  Container App1 crash  │  Nginx reroute vers App2 backend           │
+  │  VM App1 complete      │  VIP migre sur App2, service maintenu      │
+  │  DC1 indisponible      │  Auth continue via DC2 (DNS secondaire)    │
+  │  PG Primaire en panne  │  Bascule manuelle vers le replica          │
+  └────────────────────────┴────────────────────────────────────────────┘
+
+================================================================================
+  FIN DU DOCUMENT
+================================================================================

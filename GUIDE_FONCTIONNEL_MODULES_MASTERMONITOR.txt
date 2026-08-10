@@ -1,0 +1,233 @@
+================================================================================
+MASTERMONITOR - REDACTION EXPLICATIVE DU FONCTIONNEMENT DES MODULES
+Date: 01/07/2026
+================================================================================
+
+INTRODUCTION
+------------
+MasterMonitor est une plateforme de supervision IT unifiee. Son role est de
+centraliser, dans une seule interface, la supervision des serveurs,
+l'administration des equipements, la gestion des tickets, le suivi des
+adresses IP, la lecture des logs et l'analyse globale de l'infrastructure.
+
+Le principe de conception est simple: chaque module remplit une fonction metier
+precise, mais aucun module ne fonctionne seul. Tous echangent des donnees via
+des API internes, un store global de l'interface (Zustand) et la base
+PostgreSQL. Cela permet d'avoir une plateforme coherente, ou l'on passe
+facilement de l'observation a l'action, puis de l'action a la traçabilite.
+
+
+VUE GENERALE DU FONCTIONNEMENT
+------------------------------
+Le cycle normal d'utilisation commence par l'authentification de l'utilisateur.
+Une fois connecte, les pages chargent leurs donnees depuis les API: utilisateurs
+depuis Active Directory, tickets depuis PostgreSQL, metriques depuis les modules
+systeme et monitoring, journaux depuis le service de logs. Quand un utilisateur
+ajoute, modifie ou supprime un element (equipement, ticket, IP, serveur),
+l'information est mise a jour dans la base et tracee dans les logs.
+
+Le tableau de bord consolide ensuite ces informations et les affiche en temps
+reel. Cette logique rend la plateforme vivante: les modules se mettent a jour
+en continu et s'alimentent mutuellement.
+
+
+MODULE AUTHENTIFICATION
+-----------------------
+Le module d'authentification controle l'acces a la plateforme. Lorsqu'un
+utilisateur saisit ses identifiants, l'API interroge Active Directory en LDAP.
+Elle recherche d'abord le compte, puis verifie le mot de passe avec un bind
+direct utilisateur, et enfin determine le role en fonction des groupes AD.
+
+Si tout est valide, l'application cree les cookies de session
+(mm_auth, mm_user, mm_role) et autorise l'acces aux pages. Si la verification
+echoue, l'acces est refuse et l'evenement est journalise dans les logs de
+securite. Ce module est donc la porte d'entree de toute la plateforme et la
+base du controle d'acces.
+
+
+MODULE DASHBOARD
+----------------
+Le dashboard est le module de pilotage global. Il charge les donnees de
+supervision, les statistiques des tickets, les informations d'equipement,
+l'etat des utilisateurs et les alertes actives. Son objectif est de donner en
+quelques secondes un etat de sante global du SI.
+
+Il fonctionne avec des rafraichissements automatiques. Les metriques systeme
+sont actualisees toutes les 5 secondes, et certains indicateurs metier comme la
+timeline des tickets toutes les 30 secondes. Il calcule en permanence des KPI
+comme la disponibilite des serveurs, le taux de resolution des tickets,
+l'utilisation des IP et le score de sante global.
+
+
+MODULE SUPERVISION SERVEURS
+---------------------------
+Ce module surveille les machines locales et distantes. Pour la machine locale,
+il interroge les metriques systeme directement. Pour les serveurs distants,
+il utilise SSH: commandes shell pour Linux et PowerShell encode pour Windows.
+
+L'etat d'un serveur n'est pas defini sur un seul critere. Le module combine
+plusieurs signaux: reachability reseau (ping), reponse de collecte distante,
+et qualite des metriques recues. Il met ensuite a jour le statut
+(online/offline/warning), le health score, l'uptime, la charge CPU/RAM/disque
+et la liste des services.
+
+Les donnees sont ensuite consommees par le dashboard, et les anomalies sont
+tracees dans les logs ou transformees en alertes.
+
+
+MODULE IPAM
+-----------
+Le module IPAM gere l'adressage reseau. Il permet de creer, modifier et
+supprimer des adresses IP, de les classer par statut (libre, assignee,
+reservee, conflit) et de les relier a un equipement, un utilisateur ou un
+service. Chaque changement est historise pour garantir la traçabilite.
+
+Ce module integre aussi la gestion des sous-reseaux: calcul de CIDR, verification
+des plages, prevention des chevauchements, et assistance au dimensionnement.
+
+Enfin, il embarque des outils reseau pratiques: decouverte des IP locales,
+lecture ARP, ping, et scan de plage en temps reel via SSE avec progression,
+resolution de nom d'hote et recuperation MAC. L'IPAM devient ainsi a la fois un
+module de gouvernance d'adressage et un module de diagnostic.
+
+
+MODULE HELPDESK
+---------------
+Le module Helpdesk gere le cycle de vie des tickets de support. Les tickets
+sont stockes dans PostgreSQL, normalises par statut
+(open, in-progress, waiting, resolved, closed), puis affiches avec filtres,
+tri et recherche.
+
+Le fonctionnement est oriente exploitation: les tickets critiques remontent
+plus vite, l'assignation est visible, et la progression est lisible en direct.
+Lorsqu'un ticket est modifie, l'action est journalisee. Ce module est donc le
+point de coordination des incidents entre les operations techniques et les
+besoins utilisateurs.
+
+
+MODULE UTILISATEURS
+-------------------
+Le module Utilisateurs n'est pas une creation locale de comptes. Il affiche
+les comptes synchronises depuis Active Directory via /api/ad/users. Chaque
+utilisateur est presente avec ses attributs (nom, mail, departement, groupes,
+role, statut actif/inactif).
+
+Le module propose des filtres metier (role, departement, groupe, recherche)
+et croise les donnees avec les equipements attribues. Il joue donc un role
+important d'interface entre l'annuaire d'entreprise et les besoins
+operationnels de supervision.
+
+
+MODULE EQUIPEMENTS
+------------------
+Ce module gere l'inventaire materiel. Chaque equipement possede un type,
+un numero de serie, un identifiant materiel et un statut.
+
+Deux etats structurent la logique: stock et en service. Quand un equipement est
+en service, il doit etre rattache a un utilisateur valide. Quand il revient en
+stock, le module nettoie automatiquement les champs d'assignation pour eviter
+les incoherences.
+
+Le module permet aussi l'export XLSX des equipements en service et declenche une
+synchronisation des donnees de monitoring apres modification. Toutes les actions
+sont journalisees pour audit et suivi d'exploitation.
+
+
+MODULE TOPOLOGIE
+----------------
+Le module Topologie permet de construire une representation visuelle du reseau.
+L'utilisateur ajoute des noeuds (PC, switch, routeur, serveur, firewall,
+imprimante, telephone, cloud), les place sur un canvas, cree des liens, zoome,
+deplace et reajuste la vue.
+
+Cette carte est sauvegardee localement dans le navigateur. Elle ne remplace pas
+les metriques, mais elle les complete: elle facilite la lecture des dependances
+et aide au diagnostic lors d'incidents complexes.
+
+
+MODULE LOGS
+-----------
+Le module Logs centralise les evenements systeme, utilisateur, action et
+securite. Il prend en charge la recherche multicritere, la pagination,
+l'export XLSX, la purge des anciens logs et le streaming temps reel via SSE.
+
+Tous les autres modules publient dans ce module. C'est ce qui permet de relier
+les actions metier (ex: modification d'un ticket) aux evenements techniques
+(ex: erreur de collecte ou tentative d'acces refusee). Il constitue donc la
+memoire operationnelle de la plateforme.
+
+
+MODULE SETTINGS
+---------------
+Le module Settings regroupe les preferences utilisateur et les reglages de
+fonctionnement. Il charge une configuration locale (localStorage), pre-remplit
+le profil depuis AD, puis permet d'ajuster les parametres de securite,
+notifications, langue, fuseau horaire et seuils de supervision.
+
+Ce module n'est pas un simple ecran de preferences: il stabilise l'experience
+utilisateur et adapte la plateforme au contexte reel d'exploitation.
+
+
+MODULE MONITORING DATA API
+--------------------------
+Ce module est le coeur de synchronisation des donnees de supervision.
+
+En POST, il persiste les snapshots recus depuis les pages et services de
+collecte. En GET, il expose des vues ciblees (realtime, dynamic, static, store)
+selon le niveau de rafraichissement souhaite.
+
+Il joue un role de couche d'abstraction entre la collecte brute et
+l'affichage front. Grace a lui, les interfaces consomment des donnees propres,
+coherentes et adaptees a leur usage.
+
+
+MODULE SYSTEM TOOLS
+-------------------
+Le module System Tools fournit les fonctions techniques de bas niveau:
+metriques locales, metriques distantes, scan IP, detection IP locales,
+test de ping. C'est le socle technique sur lequel reposent IPAM et
+Supervision Serveurs.
+
+Sans ce module, la plateforme afficherait des donnees statiques.
+Avec lui, elle devient capable de mesurer l'etat du reseau et des machines en
+temps reel et de transformer ces mesures en decisions d'exploitation.
+
+
+MODULE ALERTES
+--------------
+Le module Alertes est transverse. Il recoit des signaux emis par les modules
+metier (serveurs, equipements, actions sensibles) et les transforme en alertes
+visibles, priorisables et resolvables.
+
+Il complete les logs: les logs donnent le detail historique, les alertes donnent
+la priorite immediate. Ensemble, ils permettent de savoir rapidement quoi traiter
+et de conserver la preuve de ce qui a ete fait.
+
+
+COMMENT LES MODULES COLLABORENT - PARCOURS TYPE
+------------------------------------------------
+Prenons un incident simple. Un utilisateur se connecte, cree un ticket,
+un technicien consulte l'etat du serveur concerne, verifie l'IP de la machine,
+identifie l'equipement associe et l'utilisateur rattache, puis lit les logs
+techniques et de securite pour confirmer la cause. Une fois la correction
+appliquee, le ticket est cloture et le dashboard reflète la nouvelle situation.
+
+Ce parcours illustre la logique de MasterMonitor: observation, diagnostic,
+action, validation, traçabilite. La force du projet vient de cette continuité
+fonctionnelle entre modules.
+
+
+CONCLUSION
+----------
+MasterMonitor n'est pas une juxtaposition de pages. C'est un systeme integre de
+supervision et d'exploitation, ou chaque module est specialise, mais relie aux
+autres. L'authentification securise l'acces, la supervision mesure, l'IPAM
+structure le reseau, le helpdesk organise la reponse, les logs garantissent
+l'audit, et le dashboard synthese l'ensemble.
+
+La plateforme apporte ainsi une vision claire, actionnable et traçable de
+l'infrastructure, avec une logique d'ingenierie orientee operations quotidiennes.
+
+================================================================================
+FIN DU DOCUMENT
+================================================================================
