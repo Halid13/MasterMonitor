@@ -152,6 +152,7 @@ export default function EquipmentPage() {
         id: Date.now().toString(),
         name: formData.name || '',
         type: formData.type as any,
+        model: formData.model || undefined,
         serialNumber: formData.serialNumber || '',
         hardwareId: formData.hardwareId || '',
         status: payload.status as any,
@@ -689,6 +690,17 @@ export default function EquipmentPage() {
                       <option value="network">Équipement réseau</option>
                       <option value="other">Autre</option>
                     </select>
+                  </div>
+
+                  <div className="group">
+                    <label className="block text-xs font-semibold text-slate-900 mb-2">Modèle</label>
+                    <input
+                      type="text"
+                      value={formData.model || ''}
+                      onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                      className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all group-hover:bg-white/70"
+                      placeholder="ex: MacBook Pro 14, Lenovo ThinkPad T14"
+                    />
                   </div>
 
                   <div className="group">

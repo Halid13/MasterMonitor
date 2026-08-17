@@ -24,20 +24,54 @@ const normalizeStatus = (value: unknown): TicketStatus | null => {
 // GET /api/tickets - liste tous les tickets depuis la base de données
 export async function GET() {
   try {
+    // La machine du demandeur est resolue via created_by, stocke au format
+    // "Nom Prenom <login@domaine>" alors que equipment.assigned_to_user contient
+    // le login seul. On extrait donc l'adresse entre chevrons (a defaut la valeur
+    // brute), puis on compare aussi bien sur l'adresse complete que sur le login
+    // qui la precede, afin de couvrir les deux conventions de saisie.
+    // Le modele materiel vit dans la table annexe equipment_model : le compte
+    // applicatif n'est pas proprietaire de equipment et ne peut donc pas y
+    // ajouter de colonne.
     const result = await dbQuery(
-      `SELECT id, title, description, priority, status, category,
-              created_by, assigned_to, comments,
-              created_at, updated_at
-       FROM tickets
+      `SELECT t.id, t.title, t.description, t.priority, t.status, t.category,
+              t.created_by, t.assigned_to, t.comments,
+              t.created_at, t.updated_at,
+              m.id            AS machine_id,
+              m.name          AS machine_name,
+              m.type          AS machine_type,
+              m.model         AS machine_model,
+              m.ip_address    AS machine_ip_address,
+              m.serial_number AS machine_serial_number,
+              m.status        AS machine_status
+       FROM tickets t
+       LEFT JOIN LATERAL (
+         SELECT e.id, e.name, e.type, em.model, e.ip_address, e.serial_number, e.status
+         FROM equipment e
+         LEFT JOIN equipment_model em ON em.equipment_id = e.id
+         CROSS JOIN LATERAL (
+           SELECT LOWER(TRIM(COALESCE(SUBSTRING(t.created_by FROM '<([^>]+)>'), t.created_by))) AS requester
+         ) k
+         WHERE NULLIF(TRIM(e.assigned_to_user), '') IS NOT NULL
+           AND NULLIF(k.requester, '') IS NOT NULL
+           AND (
+             LOWER(TRIM(e.assigned_to_user)) = k.requester
+             OR LOWER(TRIM(e.assigned_to_user)) = SPLIT_PART(k.requester, '@', 1)
+           )
+         ORDER BY
+           CASE WHEN e.status = 'in-service' THEN 0 ELSE 1 END,
+           CASE WHEN e.type IN ('pc', 'laptop') THEN 0 ELSE 1 END,
+           e.updated_at DESC
+         LIMIT 1
+       ) m ON TRUE
        ORDER BY
-         CASE priority
+         CASE t.priority
            WHEN 'critical' THEN 1
            WHEN 'high'     THEN 2
            WHEN 'medium'   THEN 3
            WHEN 'low'      THEN 4
            ELSE 5
          END,
-         created_at DESC`
+         t.created_at DESC`
     );
 
     const tickets = result.rows.map((row) => {
@@ -54,6 +88,17 @@ export async function GET() {
       comments: Array.isArray(row.comments) ? row.comments : [],
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      requesterMachine: row.machine_id
+        ? {
+            id: row.machine_id,
+            name: row.machine_name,
+            type: row.machine_type,
+            model: row.machine_model || undefined,
+            ipAddress: row.machine_ip_address || undefined,
+            serialNumber: row.machine_serial_number || undefined,
+            status: row.machine_status,
+          }
+        : undefined,
     }});
 
     return NextResponse.json({ tickets });

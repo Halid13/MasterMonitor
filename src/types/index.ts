@@ -51,6 +51,7 @@ export interface Equipment {
   id: string;
   name: string;
   type: EquipmentType;
+  model?: string; // Modèle matériel (ex: MacBook Pro 14, Lenovo ThinkPad T14)
   serialNumber: string;
   hardwareId?: string; // IMEI ou équivalent
   ipAddress?: string;
@@ -119,6 +120,17 @@ export interface ServiceStatus {
 }
 
 // Types pour les tickets Helpdesk
+// Machine rattachée au demandeur d'un ticket (relation 1-1 utilisateur/PC)
+export interface RequesterMachine {
+  id: string;
+  name: string;
+  type: EquipmentType;
+  model?: string;
+  ipAddress?: string;
+  serialNumber?: string;
+  status: 'in-service' | 'stock';
+}
+
 export interface Ticket {
   id: string;
   title: string;
@@ -132,6 +144,7 @@ export interface Ticket {
   updatedAt: Date;
   resolvedAt?: Date;
   comments: Comment[];
+  requesterMachine?: RequesterMachine; // Résolue par jointure sur createdBy
 }
 
 export interface Comment {

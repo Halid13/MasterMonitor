@@ -109,6 +109,19 @@ const upsertEquipment = async (client: PoolClient, equipment: AnyObject) => {
       equipment.dateInService ? asDate(equipment.dateInService) : null,
     ],
   );
+
+  // Le modele materiel est stocke a part : le compte applicatif n'est pas
+  // proprietaire de la table equipment et ne peut pas y ajouter de colonne.
+  await client.query(
+    `
+    INSERT INTO equipment_model (equipment_id, model, updated_at)
+    VALUES ($1, $2, NOW())
+    ON CONFLICT (equipment_id) DO UPDATE SET
+      model = EXCLUDED.model,
+      updated_at = NOW()
+    `,
+    [normalizeText(equipment.id), normalizeText(equipment.model) || null],
+  );
 };
 
 const upsertServer = async (client: PoolClient, server: AnyObject) => {
@@ -628,9 +641,11 @@ export const getStaticMonitoringData = async () => {
     ),
     dbQuery(
       `
-      SELECT id, name, type, serial_number, hardware_id, department_service, network_config, inventory_meta
-      FROM equipment
-      ORDER BY name ASC
+      SELECT e.id, e.name, e.type, em.model, e.serial_number, e.hardware_id, e.department_service,
+             e.network_config, e.inventory_meta
+      FROM equipment e
+      LEFT JOIN equipment_model em ON em.equipment_id = e.id
+      ORDER BY e.name ASC
       `,
     ),
   ]);
@@ -710,10 +725,11 @@ export const getStoreBootstrapData = async () => {
     ),
     dbQuery(
       `
-      SELECT id, name, type, serial_number, hardware_id, ip_address, status,
-             assigned_to_user, department_service, date_in_service, created_at, updated_at
-      FROM equipment
-      ORDER BY updated_at DESC
+      SELECT e.id, e.name, e.type, em.model, e.serial_number, e.hardware_id, e.ip_address, e.status,
+             e.assigned_to_user, e.department_service, e.date_in_service, e.created_at, e.updated_at
+      FROM equipment e
+      LEFT JOIN equipment_model em ON em.equipment_id = e.id
+      ORDER BY e.updated_at DESC
       `,
     ),
     dbQuery(
@@ -806,6 +822,7 @@ export const getStoreBootstrapData = async () => {
       id: row.id,
       name: row.name,
       type: row.type,
+      model: row.model,
       serialNumber: row.serial_number,
       hardwareId: row.hardware_id,
       ipAddress: row.ip_address,

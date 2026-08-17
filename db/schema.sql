@@ -92,6 +92,16 @@ CREATE TABLE IF NOT EXISTS equipment (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Modele materiel (ex: MacBook Pro 14, Lenovo ThinkPad T14).
+-- Table annexe et non colonne de equipment : le compte applicatif n'est pas
+-- proprietaire de equipment. Si les droits sont obtenus un jour, la colonne
+-- peut etre fusionnee dans equipment et cette table supprimee.
+CREATE TABLE IF NOT EXISTS equipment_model (
+  equipment_id TEXT PRIMARY KEY,
+  model TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS ip_addresses (
   id TEXT PRIMARY KEY,
   address TEXT NOT NULL,
@@ -166,3 +176,7 @@ CREATE INDEX IF NOT EXISTS idx_ticket_status_history_changed_at ON ticket_status
 CREATE INDEX IF NOT EXISTS idx_ping_results_created_at ON ping_results (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ip_addresses_address ON ip_addresses (address);
+-- Index de la jointure ticket -> equipment (resolution de la machine du demandeur).
+-- A executer par le proprietaire de la table equipment ; sans lui la jointure
+-- fonctionne mais fait un balayage sequentiel sur le parc.
+-- CREATE INDEX IF NOT EXISTS idx_equipment_assigned_user_lower ON equipment (LOWER(TRIM(assigned_to_user)));

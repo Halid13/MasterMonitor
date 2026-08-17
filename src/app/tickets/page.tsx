@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import MainLayout from '@/components/MainLayout';
 import { Ticket } from '@/types';
-import { Edit2, RefreshCw, ExternalLink, User, Search, Filter, Clock3, CircleDot } from 'lucide-react';
+import { Edit2, RefreshCw, ExternalLink, User, Search, Filter, Clock3, CircleDot, Monitor } from 'lucide-react';
 
 const PRIORITY_LABELS: Record<string, string> = {
   low: 'Faible', medium: 'Moyen', high: 'Élevé', critical: 'Critique',
@@ -451,6 +451,39 @@ export default function TicketsPage() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Créé le</p>
                     <p className="mt-1 text-sm text-slate-800">{new Date(selectedTicket.createdAt).toLocaleString('fr-FR')}</p>
                   </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <Monitor size={13} className="text-slate-400" />
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Machine du demandeur</p>
+                  </div>
+                  {selectedTicket.requesterMachine ? (
+                    <div className="mt-1 grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <div>
+                        <p className="text-xs font-medium text-slate-500">Modèle</p>
+                        <p className="mt-0.5 text-sm text-slate-800">
+                          {selectedTicket.requesterMachine.model || selectedTicket.requesterMachine.name || '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-slate-500">Adresse IP</p>
+                        <p className="mt-0.5 font-mono text-sm text-slate-800">
+                          {selectedTicket.requesterMachine.ipAddress || '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-slate-500">Numéro de série</p>
+                        <p className="mt-0.5 font-mono text-sm text-slate-800">
+                          {selectedTicket.requesterMachine.serialNumber || '—'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                      Aucune machine associée à ce demandeur
+                    </p>
+                  )}
                 </div>
 
                 <div>
