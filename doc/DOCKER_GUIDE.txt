@@ -1,0 +1,458 @@
+================================================================================
+   GUIDE DOCKER — MASTERMONITOR
+   Comment ça fonctionne, comment déployer, comment maintenir
+================================================================================
+
+--------------------------------------------------------------------------------
+ PARTIE 1 — VUE D'ENSEMBLE : QUI FAIT QUOI ?
+--------------------------------------------------------------------------------
+
+Tu as 3 acteurs principaux :
+
+  [PC Windows (toi)]  →  [VM Instance 1 : 192.168.23.153]  →  [Services réseau]
+       Docker Desktop       Docker CE (Debian 12)               AD   : 192.168.23.145
+       Build image          Fait tourner le container           PG   : 192.168.23.147
+       Déploie via SCP      Écoute sur port 3000
+
+Le PC Windows CONSTRUIT l'image Docker.
+La VM EXÉCUTE l'image Docker.
+Le container s'y connecte aux services réseau comme si c'était la VM elle-même.
+
+NOTE IMPORTANTE — network_mode: host
+  Le container n'a PAS sa propre IP. Il partage directement le réseau de la VM.
+  Donc quand le container se connecte à 192.168.23.145 (AD), il le fait
+  depuis l'IP 192.168.23.153 (la VM), comme si c'était un processus normal.
+  Sans ça, le container aurait une IP 172.17.x.x (réseau Docker bridge) que
+  le serveur AD refuserait.
+
+
+--------------------------------------------------------------------------------
+ PARTIE 2 — LES FICHIERS DOCKER ET LEUR RÔLE
+--------------------------------------------------------------------------------
+
+  Fichier                  Rôle
+  ─────────────────────    ────────────────────────────────────────────────────
+  Dockerfile               Recette pour construire l'image
+  docker-compose.yml       Configuration pour lancer le container sur la VM
+  .dockerignore            Fichiers à NE PAS copier dans l'image
+  deploy.ps1               Script PowerShell qui automatise tout le déploiement
+  .env.local               Variables d'environnement (mots de passe, URLs...)
+                           ⚠ Ce fichier est sur la VM, pas dans l'image !
+
+
+--------------------------------------------------------------------------------
+ PARTIE 3 — LE DOCKERFILE EN DÉTAIL
+--------------------------------------------------------------------------------
+
+Le Dockerfile utilise une technique appelée "multi-stage build" (2 étapes).
+C'est pour obtenir une image finale la plus petite possible.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ÉTAPE 1 : "builder" — Construction
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  FROM node:22-alpine AS builder
+    → Utilise une image Node.js légère (Alpine Linux ~5 Mo)
+    → Nommée "builder" pour y faire référence ensuite
+
+  WORKDIR /app
+    → Tous les fichiers seront dans /app à l'intérieur du container
+
+  COPY package.json package-lock.json ./
+  RUN npm ci --frozen-lockfile
+    → Installe TOUTES les dépendances (dev incluses)
+    → npm ci = installation propre et reproductible depuis package-lock.json
+    → C'est fait AVANT de copier le code source (optimisation cache Docker)
+
+  COPY . .
+    → Copie tout le code source (sauf ce qui est dans .dockerignore)
+
+  RUN npm run build
+    → Compile le projet Next.js en mode "standalone"
+    → Génère .next/standalone/ : un dossier autonome avec server.js
+    → Génère .next/static/ : les fichiers CSS/JS pour le navigateur
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ÉTAPE 2 : "runner" — Image finale
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  FROM node:22-alpine AS runner
+    → Repart d'une image Alpine toute propre
+    → L'image "builder" et ses dépendances de dev sont ABANDONNÉES ici
+    → Résultat : image finale ~3x plus petite
+
+  ENV NODE_ENV=production / PORT=3000 / HOSTNAME="0.0.0.0"
+    → Variables d'environnement fixes dans l'image
+    → HOSTNAME="0.0.0.0" = écoute sur toutes les interfaces réseau
+
+  RUN addgroup ... && adduser ...
+    → Crée un utilisateur "nextjs" non-root (sécurité)
+    → Le container ne tournera jamais en root
+
+  COPY --from=builder ...
+    → Copie uniquement ce qui est nécessaire depuis "builder" :
+      • /app/public          → images, favicon, fichiers statiques publics
+      • .next/standalone/    → server.js + node_modules minimum tracés
+      • .next/static/        → CSS, JS compilés pour le navigateur
+      • node_modules/ldapts  → bibliothèque LDAP (+ ses dépendances)
+        et ses dépendances : asn1, debug, ms, uuid, strict-event-emitter-types
+
+  POURQUOI copier ldapts manuellement ?
+    next.config.js contient : serverExternalPackages: ['ldapts', 'ldapjs']
+    Cela dit à Next.js de NE PAS bundler ces libs dans le code compilé.
+    Elles restent des modules Node.js séparés.
+    Mais le build "standalone" ne les copie pas automatiquement.
+    Donc on le fait manuellement dans le Dockerfile.
+
+  USER nextjs
+    → Bascule vers l'utilisateur non-root avant de démarrer
+
+  EXPOSE 3000
+    → Documentation uniquement (indique que l'appli écoute sur 3000)
+    → N'ouvre pas vraiment le port (c'est network_mode: host qui gère ça)
+
+  CMD ["node", "server.js"]
+    → Commande exécutée au démarrage du container
+    → Lance le serveur Next.js standalone
+
+
+--------------------------------------------------------------------------------
+ PARTIE 4 — next.config.js : LES OPTIONS IMPORTANTES POUR DOCKER
+--------------------------------------------------------------------------------
+
+  output: 'standalone'
+    → Mode de build spécial pour Docker/production
+    → Génère .next/standalone/ avec tout le nécessaire dans un seul dossier
+    → Permet de lancer l'appli avec juste "node server.js" sans npm
+
+  serverExternalPackages: ['ldapts', 'ldapjs']
+    → Empêche Next.js de "bundler" (incorporer) ces bibliothèques
+    → Nécessaire car ldapts fait des connexions réseau TCP natives
+    → Si bundlé, Next.js casse les connexions LDAP
+
+  removeConsole: { exclude: ['error', 'warn'] }
+    → En production, supprime les console.log() pour alléger les logs
+    → Mais GARDE console.error() et console.warn() pour déboguer
+
+
+--------------------------------------------------------------------------------
+ PARTIE 5 — docker-compose.yml EN DÉTAIL
+--------------------------------------------------------------------------------
+
+  services:
+    mastermonitor:               ← nom du service
+      image: mastermonitor:latest  ← l'image Docker à utiliser
+      container_name: mastermonitor-instance1  ← nom du container sur la VM
+      restart: unless-stopped    ← redémarre auto si crash, sauf arrêt manuel
+      network_mode: host         ← utilise le réseau de la VM directement
+      env_file:
+        - .env.local             ← charge les variables depuis ce fichier
+      environment:
+        NODE_ENV: production     ← surcharge/complète les variables env
+        PORT: "3000"
+        HOSTNAME: "0.0.0.0"
+
+  IMPORTANT — restart: unless-stopped
+    Si la VM redémarre, le container redémarre aussi automatiquement.
+    Sauf si tu l'as arrêté manuellement avec "docker compose down".
+
+
+--------------------------------------------------------------------------------
+ PARTIE 6 — .env.local : LES VARIABLES D'ENVIRONNEMENT
+--------------------------------------------------------------------------------
+
+Ce fichier est sur la VM à ~/mastermonitor/.env.local
+Il N'EST PAS dans l'image Docker (protection des mots de passe).
+Docker le lit au démarrage via la directive "env_file: .env.local".
+
+  LDAP_URL=ldap://192.168.23.145:389
+    → Adresse du serveur Active Directory
+    → ldap:// = connexion non chiffrée sur port 389 (réseau interne = OK)
+    → ⚠ Ne pas utiliser ldaps:// sauf si tu as un vrai certificat SSL sur l'AD
+
+  LDAP_BASE_DN=dc=monitor,dc=local
+    → Point de départ des recherches dans l'AD
+    → dc=monitor,dc=local = domaine monitor.local
+
+  LDAP_BIND_DN=cn=svc-ldap,cn=Users,dc=monitor,dc=local
+    → Compte de service pour se connecter à l'AD en lecture
+    → L'appli se connecte avec CE compte pour chercher les utilisateurs
+
+  LDAP_BIND_PASSWORD=Azerty1234@
+    → Mot de passe du compte de service
+
+  LDAP_USER_FILTER=(&(objectCategory=person)(objectClass=user))
+    → Filtre pour chercher uniquement des utilisateurs réels dans l'AD
+    → (objectCategory=person) = exclut les ordinateurs, groupes, etc.
+
+  LDAP_ADMIN_GROUPS=Administrateurs;Admins du domaine;...
+    → Liste des groupes AD qui donnent le rôle "admin" dans l'appli
+    → Séparés par des points-virgules
+
+  MM_REMOTE_USER / MM_REMOTE_PASS
+    → Credentials pour les métriques distantes (collecte de données serveurs)
+
+  DATABASE_URL=postgresql://mm_app:Azerty1234%40@192.168.23.147:5432/mastermonitor
+    → Connexion à PostgreSQL sur 192.168.23.147
+    → mm_app = utilisateur PostgreSQL
+    → Azerty1234%40 = "Azerty1234@" (le @ est encodé en URL)
+    → mastermonitor = nom de la base de données
+
+
+--------------------------------------------------------------------------------
+ PARTIE 7 — .dockerignore : CE QUI EST EXCLU DU BUILD
+--------------------------------------------------------------------------------
+
+  node_modules/   → dépendances locales (reconstruites dans le container)
+  .next/          → build local (reconstruit dans le container)
+  .git/           → historique Git (inutile dans l'image)
+  .env*           → ⚠ SÉCURITÉ : les fichiers .env ne sont jamais dans l'image
+  *.tar.gz        → archives (inutiles)
+  deploy/         → scripts de déploiement (inutiles dans l'image)
+  README.md       → documentation (inutile)
+  *.txt           → fichiers texte (inutile)
+
+  POURQUOI exclure node_modules/ ?
+    Si tu as installé des modules sur Windows, ils peuvent être incompatibles
+    avec Linux (Alpine). Le container les réinstalle depuis zéro sur Linux.
+
+
+--------------------------------------------------------------------------------
+ PARTIE 8 — PROCESSUS DE DÉPLOIEMENT COMPLET (PAS À PAS)
+--------------------------------------------------------------------------------
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ MÉTHODE A — Manuelle (commandes séparées, plus lisible)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Sur le PC Windows (PowerShell) :
+
+  ÉTAPE 1 — Construire l'image
+    docker build -t mastermonitor:latest .
+
+    Ce qui se passe :
+    - Docker lit le Dockerfile
+    - Télécharge node:22-alpine si pas en cache
+    - Installe les dépendances npm
+    - Compile Next.js (npm run build)
+    - Crée une image nommée "mastermonitor" avec le tag "latest"
+    - Durée : ~1-2 min (ou 10s si tout est en cache)
+
+  ÉTAPE 2 — Sauvegarder l'image dans un fichier .tar
+    docker save -o mastermonitor.tar mastermonitor:latest
+
+    Ce qui se passe :
+    - Exporte l'image en un fichier tar (~78 Mo)
+    - Contient toutes les couches (layers) de l'image
+
+  ÉTAPE 3 — Transférer vers la VM
+    scp mastermonitor.tar app1@192.168.23.153:~/mastermonitor/
+
+    Ce qui se passe :
+    - Copie le fichier via SSH (protocole SCP)
+    - Mot de passe SSH requis : mot de passe du compte app1
+
+  Sur la VM (connexion SSH) :
+
+  ÉTAPE 4 — Se connecter à la VM
+    ssh app1@192.168.23.153
+
+  ÉTAPE 5 — Charger l'image dans Docker
+    cd ~/mastermonitor
+    docker load -i mastermonitor.tar
+
+    Ce qui se passe :
+    - Docker importe le fichier .tar comme image locale
+    - L'image est maintenant disponible sur la VM
+
+  ÉTAPE 6 — Redémarrer le container
+    docker compose down
+    docker compose up -d
+
+    Ce qui se passe :
+    - "down" : arrête et supprime le container actuel
+    - "up -d" : crée et démarre un nouveau container en arrière-plan (-d)
+    - Docker lit docker-compose.yml pour la configuration
+    - Docker lit .env.local pour les variables d'environnement
+
+  ÉTAPE 7 — Vérifier que ça tourne
+    docker compose ps
+    docker logs mastermonitor-instance1
+
+  ÉTAPE 8 — Tester le login
+    curl -s -X POST http://localhost:3000/api/auth/login \
+      -H "Content-Type: application/json" \
+      -d '{"identifier":"Administrateur","password":"Azerty1234@"}' \
+      --max-time 20
+
+  ÉTAPE 9 — Nettoyer le fichier .tar (libère de la place)
+    rm mastermonitor.tar
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ MÉTHODE B — Script automatisé deploy.ps1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Sur le PC Windows (PowerShell) :
+    .\deploy.ps1
+
+  Le script fait automatiquement :
+    [1/5] Build de l'image Docker
+    [2/5] Crée le répertoire ~/mastermonitor sur la VM si inexistant
+    [3/5] Copie docker-compose.yml vers la VM
+    [4/5] Envoie l'image via SSH (docker save | ssh docker load)
+    [5/5] Démarre le container (docker compose down + up -d)
+
+  Paramètres optionnels :
+    .\deploy.ps1 -VM "192.168.23.154" -User "app2"
+    (utile pour déployer sur Instance 2 avec les mêmes commandes)
+
+  NOTE : Le script utilise le streaming SSH (pas de fichier .tar intermédiaire)
+    Avantage : pas de fichier temporaire à nettoyer
+    Inconvénient : si la connexion SSH est instable, ça peut échouer
+
+
+--------------------------------------------------------------------------------
+ PARTIE 9 — COMMANDES UTILES SUR LA VM
+--------------------------------------------------------------------------------
+
+  État du container :
+    docker compose ps
+    docker ps
+
+  Voir les logs en temps réel :
+    docker logs -f mastermonitor-instance1
+
+  Voir les 50 dernières lignes de logs :
+    docker logs --tail 50 mastermonitor-instance1
+
+  Redémarrer le container :
+    docker compose restart
+
+  Arrêter le container :
+    docker compose down
+
+  Démarrer le container :
+    docker compose up -d
+
+  Entrer dans le container (pour déboguer) :
+    docker exec -it mastermonitor-instance1 sh
+
+  Voir les images disponibles :
+    docker images
+
+  Supprimer les vieilles images inutilisées :
+    docker image prune -f
+
+  Voir la consommation mémoire/CPU :
+    docker stats mastermonitor-instance1
+
+
+--------------------------------------------------------------------------------
+ PARTIE 10 — SCHÉMA DU FLUX D'UNE CONNEXION UTILISATEUR
+--------------------------------------------------------------------------------
+
+  Navigateur (192.168.23.x)
+       │
+       │ HTTP GET http://192.168.23.153:3000/login
+       ▼
+  VM Instance 1 (192.168.23.153)
+    └─ Container Docker (network_mode: host → même IP que la VM)
+         └─ Next.js server.js (port 3000)
+              │
+              │ POST /api/auth/login
+              │ { identifier: "Administrateur", password: "..." }
+              │
+              ├─── LDAP BIND ────► AD (192.168.23.145:389)
+              │                    Authentifie svc-ldap
+              │                    Cherche l'utilisateur
+              │                    Vérifie le mot de passe
+              │                    Retourne les groupes AD
+              │
+              ├─── DB QUERY ─────► PostgreSQL (192.168.23.147:5432)
+              │                    Logs d'audit, tickets, etc.
+              │
+              └─── RÉPONSE ──────► Navigateur
+                                   Set-Cookie: mm_auth=1
+                                   Set-Cookie: mm_user=Administrateur
+                                   Set-Cookie: mm_role=admin
+                                   Redirection vers /dashboard
+
+
+--------------------------------------------------------------------------------
+ PARTIE 11 — STRUCTURE DES FICHIERS SUR LA VM
+--------------------------------------------------------------------------------
+
+  /home/app1/mastermonitor/
+  ├── docker-compose.yml     ← Configuration du container
+  └── .env.local             ← Variables d'environnement (mots de passe, etc.)
+
+  C'est TOUT. L'application entière est dans l'image Docker.
+  Pas de node_modules, pas de src/, pas de .next/ sur la VM.
+
+
+--------------------------------------------------------------------------------
+ PARTIE 12 — QUE FAIRE EN CAS DE PROBLÈME ?
+--------------------------------------------------------------------------------
+
+  LE CONTAINER NE DÉMARRE PAS :
+    docker logs mastermonitor-instance1
+    → Chercher des lignes "Error" ou "ECONNREFUSED"
+
+  ERREUR DE CONNEXION AD (LDAP) :
+    docker exec -it mastermonitor-instance1 sh
+    node -e "
+      const { Client } = require('./node_modules/ldapts');
+      const c = new Client({ url: 'ldap://192.168.23.145:389' });
+      c.bind('cn=svc-ldap,cn=Users,dc=monitor,dc=local','Azerty1234@')
+       .then(() => { console.log('OK'); c.unbind(); })
+       .catch(e => console.error('ERREUR:', e.message));
+    "
+
+  ERREUR DE CONNEXION POSTGRESQL :
+    docker exec -it mastermonitor-instance1 sh
+    node -e "
+      const { Pool } = require('./node_modules/pg');
+      const p = new Pool({ connectionString: process.env.DATABASE_URL });
+      p.query('SELECT 1').then(() => { console.log('OK'); process.exit(0); })
+             .catch(e => { console.error('ERREUR:', e.message); process.exit(1); });
+    "
+
+  L'IMAGE N'A PAS ÉTÉ MISE À JOUR :
+    docker images | grep mastermonitor
+    → Vérifie la date de création de l'image
+
+  ROLLBACK (revenir à l'ancienne version) :
+    Sur la VM, si tu as gardé l'ancienne image :
+    docker compose down
+    docker tag mastermonitor:previous mastermonitor:latest
+    docker compose up -d
+
+
+--------------------------------------------------------------------------------
+ PARTIE 13 — RÉSUMÉ DES PORTS ET IPs
+--------------------------------------------------------------------------------
+
+  192.168.23.145:389  → Active Directory (LDAP)
+  192.168.23.147:5432 → PostgreSQL
+  192.168.23.153:3000 → MasterMonitor Instance 1 (VM + container)
+  192.168.23.153:22   → SSH vers la VM Instance 1
+
+
+--------------------------------------------------------------------------------
+ PARTIE 14 — CHECKLIST AVANT CHAQUE DÉPLOIEMENT
+--------------------------------------------------------------------------------
+
+  [ ] Le code a été modifié et testé en local (npm run dev)
+  [ ] Les modifications sont commitées et pushées sur Git
+  [ ] docker build -t mastermonitor:latest . → succès (22/22 FINISHED)
+  [ ] docker save -o mastermonitor.tar mastermonitor:latest → fichier créé
+  [ ] scp mastermonitor.tar ... → transfert réussi (100%)
+  [ ] Sur VM : docker load -i mastermonitor.tar → image chargée
+  [ ] Sur VM : docker compose down && docker compose up -d → container démarré
+  [ ] Sur VM : curl http://localhost:3000/api/auth/login → {"ok":true,...}
+  [ ] Sur VM : rm mastermonitor.tar → nettoyage
+
+
+================================================================================
+ FIN DU GUIDE
+================================================================================

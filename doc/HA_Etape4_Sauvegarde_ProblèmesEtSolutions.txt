@@ -1,0 +1,72 @@
+MasterMonitor — Mise en place de la sauvegarde automatique
+Retour d'expérience technique — Mai 2026
+
+════════════════════════════════════════════════════════════════
+
+Une fois la réplication entre le serveur primaire et le réplica opérationnelle, l'étape suivante consistait à mettre en place un système de sauvegarde automatique des données de MasterMonitor. L'objectif était de protéger la base contre trois types de scénarios : une erreur humaine comme la suppression accidentelle de données, une corruption interne du moteur PostgreSQL, et une défaillance matérielle totale du serveur. Trois mécanismes complémentaires ont été retenus pour répondre à ces trois risques : une sauvegarde logique quotidienne, une image physique complète hebdomadaire, et un archivage continu des journaux de transactions. Ce document retrace les problèmes rencontrés lors de la mise en place de ce système et la manière dont ils ont été résolus.
+
+════════════════════════════════════════════════════════════════
+1. L'archivage WAL pointait vers un mauvais répertoire
+════════════════════════════════════════════════════════════════
+
+PostgreSQL dispose d'un mécanisme natif appelé WAL archiving, qui consiste à copier chaque journal de transaction vers un emplacement de stockage dès qu'il est finalisé. Ces journaux, appelés fichiers WAL, enregistrent chaque modification apportée à la base de données dans l'ordre chronologique exact. Conservés correctement, ils permettent de rejouer l'intégralité de l'activité de la base depuis un point de sauvegarde jusqu'à n'importe quel instant ultérieur — c'est ce qu'on appelle la restauration point-in-time, ou PITR.
+
+Ce mécanisme avait été activé lors de la configuration initiale du serveur primaire, mais la destination des archives avait été définie de manière provisoire, sans tenir compte de la structure de répertoires qui serait adoptée pour les sauvegardes. En vérifiant la configuration au début de cette étape, nous avons constaté que les archives WAL étaient envoyées vers un répertoire qui n'existait pas dans l'organisation retenue pour les sauvegardes de ce projet.
+
+La correction a consisté à ouvrir le fichier de configuration principal de PostgreSQL et à modifier la valeur de la commande d'archivage pour qu'elle pointe vers le bon sous-répertoire, celui prévu pour les archives WAL au sein de la structure de sauvegarde centralisée. Une fois la modification enregistrée, il n'a pas été nécessaire de redémarrer PostgreSQL. Un rechargement de la configuration suffit pour ce type de paramètre — PostgreSQL relit le fichier et applique les nouvelles valeurs sans interrompre les connexions actives, ce qui est important dans un environnement de production où l'application tourne en permanence.
+
+════════════════════════════════════════════════════════════════
+2. Les scripts de sauvegarde n'existaient pas au moment du test
+════════════════════════════════════════════════════════════════
+
+Le système de sauvegarde repose sur deux scripts shell écrits pour l'occasion. Le premier produit chaque nuit une copie logique de la base de données en utilisant l'outil pg_dump, qui exporte le contenu de toutes les tables dans un fichier compressé. Le second produit chaque semaine une image physique complète du répertoire de données de PostgreSQL en utilisant pg_basebackup, qui réalise une copie à chaud de l'ensemble des fichiers internes du moteur. Ces deux scripts devaient être déposés dans un répertoire système standard, rendus exécutables, puis déclarés dans le planificateur de tâches cron pour tourner automatiquement aux horaires définis.
+
+Dans l'enchaînement des opérations, une erreur d'ordre a été commise : le planificateur cron a été configuré en premier, avec les références aux deux scripts, avant que les scripts eux-mêmes n'aient été créés. Lorsque nous avons tenté de déclencher manuellement le script de sauvegarde quotidienne pour vérifier son bon fonctionnement, le système a répondu qu'il était introuvable. Le fichier n'existait tout simplement pas encore sur le disque.
+
+L'erreur est compréhensible dans une séquence de configuration longue où l'on jongle entre plusieurs étapes. La solution a été de créer les deux scripts immédiatement, en utilisant une méthode d'écriture directe depuis le terminal qui évite d'ouvrir un éditeur de texte interactif. Cette approche est particulièrement adaptée au travail en SSH, où copier-coller de longs blocs de texte dans un éditeur comme nano peut provoquer des décalages d'indentation ou des caractères parasites. En passant par la redirection standard, le contenu est écrit tel quel dans le fichier cible, sans risque d'altération.
+
+Une fois les scripts créés et rendus exécutables, le test manuel a pu être relancé avec succès.
+
+════════════════════════════════════════════════════════════════
+3. Le planificateur cron mal configuré lors de la première tentative
+════════════════════════════════════════════════════════════════
+
+La configuration du planificateur cron pour l'utilisateur postgres a elle aussi nécessité deux tentatives. Lorsqu'on ouvre l'éditeur de crontab pour la première fois sur un système où aucun éditeur par défaut n'est encore défini, le système demande interactivement de choisir l'éditeur à utiliser. Il affiche une liste numérotée et attend une saisie.
+
+Lors de la première tentative, cette invite de sélection n'a pas été remarquée. Les lignes de planification avaient été préparées à l'avance et ont été collées directement dans le terminal au moment où la question était posée. Le système a interprété ces lignes comme des réponses à la sélection d'éditeur, ce qui n'avait évidemment aucun sens. La session s'est terminée sans enregistrer le moindre changement, avec le message indiquant qu'aucune modification n'avait été effectuée.
+
+La deuxième tentative a été conduite plus attentivement : la touche Entrée a été pressée pour accepter l'éditeur nano proposé par défaut, l'éditeur s'est ouvert normalement, et les lignes de planification ont été saisies dans le fichier. La sauvegarde et la fermeture de l'éditeur ont validé l'enregistrement. Une vérification immédiate du contenu du crontab a confirmé que les deux tâches — la sauvegarde quotidienne à deux heures du matin et la sauvegarde hebdomadaire le dimanche à trois heures — étaient bien en place.
+
+════════════════════════════════════════════════════════════════
+4. Permission refusée à l'inspection du répertoire de sauvegarde
+════════════════════════════════════════════════════════════════
+
+Après le premier test réussi du script de sauvegarde, la vérification du répertoire de destination a provoqué une erreur de permission. Le répertoire de sauvegarde avait été créé avec des droits restreints et appartient à l'utilisateur système postgres. L'utilisateur pgprimaire, celui utilisé pour se connecter en SSH au serveur, n'appartient pas au groupe postgres et ne dispose d'aucun droit de lecture sur ce répertoire.
+
+Ce comportement est voulu et constitue une bonne pratique de sécurité. Les fichiers de sauvegarde contiennent l'intégralité des données de la base de données — si n'importe quel utilisateur du système pouvait les lire librement, cela représenterait une fuite d'information majeure. En limitant l'accès au seul utilisateur postgres, on s'assure que les sauvegardes ne sont accessibles que par le processus qui les a créées ou par un administrateur disposant des droits suffisants.
+
+Pour inspecter les fichiers de sauvegarde ou lire les journaux de l'opération, il suffit d'utiliser la commande sudo, qui permet temporairement d'exécuter une action avec les droits d'un autre utilisateur. Cette approche conserve la sécurité du répertoire tout en donnant à l'administrateur la visibilité nécessaire pour vérifier que les sauvegardes se sont bien déroulées.
+
+════════════════════════════════════════════════════════════════
+5. Un avertissement déroutant mais sans conséquence
+════════════════════════════════════════════════════════════════
+
+Lors du test manuel du script exécuté avec les droits de l'utilisateur postgres, un message d'avertissement est apparu à la fin de l'opération, indiquant que la commande find avait échoué à retrouver le répertoire de travail initial.
+
+Pour comprendre ce message, il faut savoir ce qui se passe précisément lorsqu'on exécute un script en changeant d'identité utilisateur via sudo. L'identité change bien — le script s'exécute comme si c'était postgres qui le lançait — mais le répertoire de travail courant, lui, reste celui depuis lequel la commande a été saisie, c'est-à-dire le dossier personnel de pgprimaire. Or ce dossier appartient à pgprimaire et n'est pas accessible à postgres. À la toute fin de son exécution, la commande find tente de revenir au répertoire de travail initial pour faire son nettoyage interne — et échoue, car postgres ne peut pas y accéder.
+
+Ce comportement n'affecte en rien le résultat de la sauvegarde elle-même. Le fichier dump avait été créé correctement, sa taille était cohérente, et le journal de l'opération indiquait clairement un succès. L'avertissement est un effet de bord purement cosmétique lié à la manière dont le script a été lancé manuellement depuis la session de pgprimaire. Lorsque le script sera exécuté automatiquement par cron dans le contexte de l'utilisateur postgres, ce répertoire de travail ne sera plus celui de pgprimaire et l'avertissement n'apparaîtra plus.
+
+════════════════════════════════════════════════════════════════
+Ce que cette expérience nous a appris
+════════════════════════════════════════════════════════════════
+
+La mise en place d'un système de sauvegarde automatique confronte l'ingénieur à des difficultés qui sont rarement techniques dans leur fond, mais souvent liées à l'ordre des opérations, à la lecture attentive des messages interactifs du système, et à la compréhension des mécanismes de droits Linux. Configurer un planificateur avant d'avoir créé les scripts qu'il doit exécuter, coller du texte au mauvais moment dans un terminal interactif, ou tenter d'accéder à des fichiers protégés sans les droits appropriés — ces situations sont banales mais peuvent faire perdre un temps précieux si l'on ne prend pas le recul nécessaire pour en comprendre la cause.
+
+Ce qui distingue un ingénieur expérimenté dans ces moments, c'est moins la connaissance de toutes les solutions à l'avance que la capacité à lire les messages d'erreur calmement, à identifier leur cause réelle, et à ajuster l'approche plutôt que de forcer en relançant la même opération. Chacun des cinq problèmes documentés ici avait une cause claire et une solution directe, dès lors que l'on prenait le temps de comprendre ce que le système tentait de communiquer.
+
+À l'issue de cette étape, le système de sauvegarde est pleinement opérationnel sur le serveur primaire. Chaque nuit à deux heures du matin, une copie logique de la base mastermonitor est produite et conservée pendant sept jours, avant d'être automatiquement supprimée au profit de la plus récente. Chaque dimanche à trois heures, une image physique complète est archivée et conservée pendant quatre semaines. En parallèle, les journaux de transactions s'accumulent en continu dans leur répertoire dédié, prêts à être utilisés pour rejouer l'activité de la base depuis n'importe quel point de sauvegarde jusqu'à l'instant exact voulu. L'ensemble de ces mécanismes garantit que même dans le pire des scénarios, la perte de données ne peut excéder vingt-quatre heures — et peut être réduite à quelques minutes si les archives WAL sont utilisées dans une procédure de restauration complète.
+
+════════════════════════════════════════════════════════════════
+
+Document rédigé le 19-20 mai 2026 — MasterMonitor HA Setup

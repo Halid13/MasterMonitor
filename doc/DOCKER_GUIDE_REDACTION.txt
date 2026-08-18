@@ -1,0 +1,399 @@
+================================================================================
+   GUIDE DOCKER — MASTERMONITOR
+   Fonctionnement, déploiement et maintenance expliqués simplement
+================================================================================
+
+
+PARTIE 1 — VUE D'ENSEMBLE : QUI FAIT QUOI ?
+────────────────────────────────────────────
+
+L'infrastructure de MasterMonitor repose sur trois éléments distincts qui
+interagissent ensemble : ton PC Windows, la VM Instance 1, et les services
+réseau de l'entreprise (Active Directory et PostgreSQL).
+
+Ton PC Windows joue le rôle de machine de construction. C'est là que Docker
+Desktop est installé, et c'est depuis là que tu construis l'image de
+l'application et que tu la déploies sur la VM. La VM Instance 1, dont
+l'adresse IP est 192.168.23.153, est la machine qui fait réellement tourner
+l'application en production. Elle héberge un Docker Engine (version CE sur
+Debian 12) qui exécute le container de l'application en permanence. Enfin,
+les services réseau comprennent le serveur Active Directory à l'adresse
+192.168.23.145 qui gère l'authentification des utilisateurs, et la base de
+données PostgreSQL à l'adresse 192.168.23.147 qui stocke les données
+applicatives.
+
+Un point très important concerne la façon dont le container communique avec
+le réseau. Par défaut, Docker attribue à chaque container sa propre adresse
+IP interne, dans une plage comme 172.17.x.x. Le problème est que le serveur
+Active Directory n'accepte pas les connexions provenant de ces adresses
+inconnues. Pour contourner cela, le container est configuré en mode
+"network_mode: host", ce qui signifie qu'il partage directement le réseau
+de la VM. Concrètement, quand le container se connecte à l'AD, il le fait
+depuis l'adresse 192.168.23.153 (celle de la VM), exactement comme si c'était
+un processus ordinaire qui tournait directement sur la machine.
+
+
+PARTIE 2 — LES FICHIERS QUI COMPOSENT L'INFRASTRUCTURE DOCKER
+──────────────────────────────────────────────────────────────
+
+Le projet comporte cinq fichiers liés à Docker, chacun ayant un rôle précis.
+
+Le fichier "Dockerfile" est la recette de fabrication de l'image. Il décrit
+toutes les étapes nécessaires pour transformer le code source en une image
+autonome prête à être exécutée sur n'importe quelle machine Linux.
+
+Le fichier "docker-compose.yml" est le fichier de configuration qui indique
+à Docker comment lancer le container sur la VM. Il précise quel image
+utiliser, quel nom donner au container, comment gérer le réseau, quelles
+variables d'environnement charger, et quelle politique de redémarrage
+appliquer.
+
+Le fichier ".dockerignore" liste tous les fichiers et dossiers que Docker doit
+ignorer quand il prépare le contexte de construction. C'est l'équivalent du
+.gitignore, mais pour Docker.
+
+Le fichier "deploy.ps1" est un script PowerShell qui automatise tout le
+processus de déploiement depuis ton PC Windows jusqu'à la VM, en une seule
+commande.
+
+Enfin, le fichier ".env.local" contient tous les mots de passe, URLs et
+paramètres sensibles de l'application. Ce fichier est stocké directement
+sur la VM et n'est jamais inclus dans l'image Docker, ce qui est une mesure
+de sécurité essentielle.
+
+
+PARTIE 3 — LE DOCKERFILE : COMMENT L'IMAGE EST CONSTRUITE
+──────────────────────────────────────────────────────────
+
+Le Dockerfile utilise une technique appelée "multi-stage build", c'est-à-dire
+une construction en deux étapes. L'objectif est d'obtenir une image finale
+aussi légère que possible, en évitant d'y inclure des outils de développement
+qui ne sont utiles que pendant la phase de compilation.
+
+La première étape s'appelle "builder". Elle démarre à partir d'une image
+officielle Node.js version 22 basée sur Alpine Linux, qui est une distribution
+Linux très légère d'environ 5 mégaoctets. Toutes les opérations de compilation
+se déroulent dans cette étape.
+
+La première chose que fait cette étape est de copier uniquement les fichiers
+"package.json" et "package-lock.json" dans le container, puis d'exécuter
+"npm ci". Cette commande installe toutes les dépendances de façon propre et
+reproductible à partir du fichier de verrous. Le fait de faire cette étape
+avant de copier le reste du code source est une optimisation importante : si
+le code change mais que les dépendances restent les mêmes, Docker peut
+réutiliser le cache de cette couche et ne pas réinstaller tous les modules à
+chaque build, ce qui fait gagner plusieurs minutes.
+
+Ensuite, tout le code source est copié dans le container (à l'exception des
+fichiers listés dans .dockerignore), et la commande "npm run build" est
+exécutée. Cette commande compile l'application Next.js et génère deux choses
+importantes : le dossier ".next/standalone/" qui contient un serveur Node.js
+autonome avec le fichier "server.js", et le dossier ".next/static/" qui
+contient tous les fichiers CSS et JavaScript destinés aux navigateurs.
+
+La deuxième étape s'appelle "runner". Elle repart d'une image Alpine toute
+propre, sans aucun lien avec l'étape "builder". C'est là que réside l'intérêt
+du multi-stage : tous les outils de développement, les dépendances de
+compilation et le code source intermédiaire de l'étape "builder" sont
+simplement abandonnés. L'image finale est donc bien plus petite.
+
+Cette deuxième étape crée d'abord un utilisateur système appelé "nextjs" qui
+n'a pas les droits administrateur. C'est une bonne pratique de sécurité :
+si une faille était exploitée dans l'application, l'attaquant n'aurait accès
+qu'à un compte limité, sans pouvoir prendre le contrôle total de la machine.
+
+Ensuite, seuls les fichiers nécessaires à l'exécution sont copiés depuis
+l'étape "builder" : les fichiers publics (images, favicon), le serveur
+standalone et ses fichiers statiques, ainsi que la bibliothèque "ldapts" et
+ses dépendances.
+
+Cette dernière copie mérite une explication. Le fichier "next.config.js"
+contient l'option "serverExternalPackages: ['ldapts', 'ldapjs']", qui dit
+à Next.js de ne pas incorporer ces bibliothèques dans le code compilé. Elles
+restent des modules Node.js séparés. Or, le mode "standalone" de Next.js ne
+copie pas automatiquement les packages déclarés comme externes. C'est pourquoi
+on doit les copier manuellement dans le Dockerfile.
+
+Finalement, le container bascule vers l'utilisateur non-root "nextjs" et
+lance le serveur avec la commande "node server.js".
+
+
+PARTIE 4 — next.config.js : LES OPTIONS QUI RENDENT DOCKER POSSIBLE
+─────────────────────────────────────────────────────────────────────
+
+Trois options de "next.config.js" sont directement liées au fonctionnement
+avec Docker.
+
+L'option "output: 'standalone'" active un mode de compilation spécial dans
+lequel Next.js génère un dossier autonome contenant tout ce dont l'application
+a besoin pour tourner, sans dépendre d'une installation Node.js complète avec
+"node_modules". Cela permet de lancer l'application avec une simple commande
+"node server.js" et de produire des images Docker très légères.
+
+L'option "serverExternalPackages: ['ldapts', 'ldapjs']" empêche Next.js
+d'incorporer les bibliothèques LDAP dans le bundle compilé. Ces bibliothèques
+gèrent des connexions réseau TCP de bas niveau, et si Next.js les transforme
+en bundle, il casse leur fonctionnement. En les déclarant comme "externes",
+on s'assure qu'elles restent des modules Node.js chargés normalement au
+moment de l'exécution.
+
+L'option "removeConsole" désactive les "console.log()" en production pour
+alléger les logs, tout en conservant les "console.error()" et
+"console.warn()" qui sont indispensables pour diagnostiquer les problèmes
+sur la VM.
+
+
+PARTIE 5 — docker-compose.yml : COMMENT LE CONTAINER EST LANCÉ
+───────────────────────────────────────────────────────────────
+
+Le fichier "docker-compose.yml" est relativement court mais chaque ligne
+a son importance.
+
+Il définit un seul service appelé "mastermonitor" qui utilise l'image
+"mastermonitor:latest". Le container est nommé "mastermonitor-instance1",
+ce qui permet de le référencer facilement dans toutes les commandes Docker.
+
+La directive "restart: unless-stopped" signifie que Docker redémarre
+automatiquement le container en cas de crash ou au redémarrage de la VM.
+La seule exception est si on l'a arrêté volontairement avec "docker compose
+down". C'est cette option qui garantit que l'application reste disponible
+sans intervention manuelle.
+
+La directive "network_mode: host" fait partager au container l'interface
+réseau de la VM, comme expliqué en partie 1. Avec ce mode, il n'y a pas de
+"ports:" à déclarer, car le container utilise directement le port 3000 de
+la VM.
+
+La directive "env_file: .env.local" charge automatiquement toutes les
+variables du fichier ".env.local" situé dans le même dossier que le
+"docker-compose.yml" sur la VM. Les quelques variables déclarées ensuite
+dans "environment:" (NODE_ENV, PORT, HOSTNAME) complètent ou surchargent
+celles du fichier.
+
+
+PARTIE 6 — .env.local : LES VARIABLES D'ENVIRONNEMENT EXPLIQUÉES
+─────────────────────────────────────────────────────────────────
+
+Ce fichier est l'unique endroit où sont stockés tous les paramètres
+sensibles de l'application. Il réside sur la VM à l'emplacement
+"~/mastermonitor/.env.local" et n'est jamais embarqué dans l'image Docker.
+
+La variable LDAP_URL indique l'adresse du serveur Active Directory. Elle
+utilise le protocole "ldap://" (non chiffré) sur le port 389, ce qui est
+acceptable dans un réseau interne. Il ne faudrait pas utiliser "ldaps://"
+(la version chiffrée) à moins que le serveur AD dispose d'un certificat SSL
+valide, car cela provoquerait des erreurs de connexion.
+
+La variable LDAP_BASE_DN précise le point de départ des recherches dans
+l'annuaire Active Directory. La valeur "dc=monitor,dc=local" correspond au
+domaine "monitor.local" et indique que toutes les recherches d'utilisateurs
+partiront de la racine de ce domaine.
+
+La variable LDAP_BIND_DN contient l'identité du compte de service utilisé
+pour se connecter à l'AD. Ce compte, "svc-ldap", est un compte dédié qui
+a uniquement les droits de lecture sur l'annuaire. L'application s'en sert
+pour chercher les utilisateurs qui tentent de se connecter. Son mot de passe
+est dans LDAP_BIND_PASSWORD.
+
+La variable LDAP_USER_FILTER est un filtre LDAP qui dit à l'application
+de ne chercher que de vrais comptes utilisateurs, en excluant les comptes
+d'ordinateurs, les groupes, et les autres objets de l'annuaire.
+
+La variable LDAP_ADMIN_GROUPS contient la liste des groupes Active Directory
+dont les membres obtiennent le rôle "admin" dans MasterMonitor. Les noms de
+groupes sont séparés par des points-virgules.
+
+Les variables MM_REMOTE_USER et MM_REMOTE_PASS contiennent les identifiants
+utilisés par l'application pour collecter des métriques sur les serveurs
+distants.
+
+La variable DATABASE_URL est la chaîne de connexion complète vers PostgreSQL.
+Elle contient l'adresse du serveur (192.168.23.147), le port (5432), le nom
+d'utilisateur (mm_app), son mot de passe (Azerty1234@, encodé en URL comme
+Azerty1234%40 car le caractère @ a une signification spéciale dans les URLs),
+et le nom de la base de données (mastermonitor).
+
+
+PARTIE 7 — .dockerignore : CE QUI EST EXCLU DE LA CONSTRUCTION
+───────────────────────────────────────────────────────────────
+
+Quand Docker commence à construire une image, il copie tous les fichiers du
+répertoire courant dans un espace de travail temporaire. Le fichier
+".dockerignore" lui dit quoi ignorer, pour ne pas copier des centaines de
+mégaoctets inutilement.
+
+Le dossier "node_modules/" est exclu parce que les modules installés sur
+Windows pourraient être incompatibles avec Linux Alpine. Docker les réinstalle
+de toute façon depuis zéro pendant le build avec "npm ci".
+
+Le dossier ".next/" est exclu car c'est le résultat d'un précédent build local
+qui serait de toute façon recompilé à l'intérieur du container.
+
+Le dossier ".git/" et les fichiers ".env*" sont exclus par sécurité : l'image
+finale ne doit jamais contenir l'historique Git ni les mots de passe.
+
+
+PARTIE 8 — LE PROCESSUS DE DÉPLOIEMENT PAS À PAS
+─────────────────────────────────────────────────
+
+Il existe deux façons de déployer l'application : manuellement en exécutant
+les commandes une à une, ou automatiquement via le script "deploy.ps1".
+
+Pour le déploiement manuel, on commence sur le PC Windows. La première
+commande, "docker build -t mastermonitor:latest .", demande à Docker de lire
+le Dockerfile et de construire l'image. Docker exécute chacune des 22 étapes
+décrites dans le fichier. Si certaines étapes n'ont pas changé depuis le
+dernier build, Docker les saute en utilisant son cache, ce qui accélère
+considérablement les builds successifs. La durée varie entre 10 secondes
+(tout en cache) et 2 minutes (première fois ou cache invalide).
+
+Une fois l'image construite, on l'exporte dans un fichier avec "docker save
+-o mastermonitor.tar mastermonitor:latest". Ce fichier tar d'environ 78
+mégaoctets contient toutes les couches de l'image dans un format transportable.
+
+On le transfère ensuite vers la VM avec la commande SCP :
+"scp mastermonitor.tar app1@192.168.23.153:~/mastermonitor/"
+SCP est un protocole de copie sécurisé qui passe par SSH. Il faut entrer le
+mot de passe du compte "app1" sur la VM pour autoriser le transfert.
+
+Sur la VM, après s'être connecté en SSH, on charge l'image avec "docker load
+-i mastermonitor.tar". Docker décompresse le fichier et enregistre l'image
+localement. Ensuite, "docker compose down" arrête et supprime le container
+actuellement en cours d'exécution, et "docker compose up -d" en crée un
+nouveau à partir de l'image fraîchement chargée. L'option "-d" signifie
+"detached" : le container tourne en arrière-plan et libère le terminal.
+
+On peut vérifier que tout fonctionne avec "docker compose ps" qui affiche
+l'état du container, et avec une requête curl vers l'API de login. Si la
+réponse est '{"ok":true,...}', l'application est opérationnelle. Enfin, on
+supprime le fichier tar avec "rm mastermonitor.tar" pour libérer de l'espace.
+
+Pour le déploiement automatisé, il suffit de lancer ".\deploy.ps1" depuis
+PowerShell sur le PC Windows. Le script enchaîne automatiquement les cinq
+mêmes étapes, en affichant la progression et en s'arrêtant proprement si
+l'une d'elles échoue. Il est possible de lui passer des paramètres pour
+cibler une autre VM, par exemple ".\deploy.ps1 -VM '192.168.23.154' -User
+'app2'" pour déployer sur une Instance 2.
+
+
+PARTIE 9 — COMMANDES UTILES AU QUOTIDIEN
+─────────────────────────────────────────
+
+Une fois le container en marche sur la VM, quelques commandes sont
+particulièrement utiles.
+
+Pour voir l'état du container et confirmer qu'il est bien en train de tourner,
+on utilise "docker compose ps" depuis le dossier "~/mastermonitor". Pour
+voir l'ensemble des containers actifs sur la machine, "docker ps" donne une
+vue plus globale.
+
+Pour consulter les logs de l'application, "docker logs mastermonitor-instance1"
+affiche tout l'historique. L'option "--tail 50" limite l'affichage aux 50
+dernières lignes, et l'option "-f" passe en mode "suivi en temps réel", très
+utile pour surveiller ce qui se passe pendant qu'on teste l'application.
+
+Pour redémarrer le container sans le recréer, "docker compose restart" suffit.
+Pour l'arrêter complètement, "docker compose down", et pour le relancer,
+"docker compose up -d".
+
+Pour entrer à l'intérieur du container et exécuter des commandes directement
+dans l'environnement d'exécution, la commande "docker exec -it
+mastermonitor-instance1 sh" ouvre un shell interactif. C'est très utile pour
+tester les connexions à l'AD ou à PostgreSQL directement depuis l'intérieur
+du container, sans interférence avec la configuration de la VM.
+
+Pour surveiller la consommation de ressources en temps réel, "docker stats
+mastermonitor-instance1" affiche l'utilisation CPU, mémoire et réseau.
+
+
+PARTIE 10 — FLUX D'UNE CONNEXION UTILISATEUR
+─────────────────────────────────────────────
+
+Comprendre ce qui se passe quand un utilisateur se connecte à MasterMonitor
+aide à diagnostiquer les problèmes.
+
+Tout commence dans le navigateur d'un poste du réseau. L'utilisateur accède
+à l'adresse http://192.168.23.153:3000 et arrive sur la page de connexion.
+Quand il soumet son formulaire, le navigateur envoie une requête HTTP POST
+vers "/api/auth/login" avec l'identifiant et le mot de passe.
+
+Cette requête arrive au container Docker sur la VM, qui écoute sur le port
+3000 grâce au mode "network_mode: host". Le serveur Next.js reçoit la requête
+et la traite dans la route "/api/auth/login".
+
+Le serveur commence par se connecter à Active Directory (192.168.23.145:389)
+avec le compte de service "svc-ldap". Il recherche ensuite l'utilisateur dans
+l'annuaire en testant plusieurs attributs : le sAMAccountName (nom court),
+le userPrincipalName (format email@domaine) et l'adresse mail. Si
+l'utilisateur est trouvé, il tente de s'authentifier avec son mot de passe.
+En cas de succès, il récupère ses groupes AD et détermine son rôle
+(admin ou utilisateur standard) en comparant ses groupes avec la liste
+LDAP_ADMIN_GROUPS.
+
+En parallèle ou juste après, il peut interroger la base de données PostgreSQL
+sur 192.168.23.147 pour des opérations d'audit ou de récupération de données.
+
+Si tout s'est bien passé, le serveur renvoie une réponse JSON positive et
+pose trois cookies dans le navigateur : "mm_auth" qui confirme que
+l'utilisateur est connecté, "mm_user" qui contient son nom d'affichage, et
+"mm_role" qui contient son rôle. Le middleware Next.js utilise ensuite ces
+cookies pour protéger les pages et rediriger vers le tableau de bord.
+
+
+PARTIE 11 — CE QUI EST PRÉSENT SUR LA VM
+─────────────────────────────────────────
+
+La VM ne contient que deux fichiers dans le dossier de l'application :
+"docker-compose.yml" et ".env.local". C'est tout.
+
+L'application entière (le code compilé, les dépendances, le serveur Node.js)
+est contenue dans l'image Docker. Elle n'existe pas sous forme de fichiers
+accessibles sur la VM. C'est un avantage majeur de Docker : la VM est propre,
+sans accumulation de fichiers au fil des déploiements, et l'environnement
+d'exécution est toujours identique à ce qui a été testé sur le PC de
+développement.
+
+
+PARTIE 12 — QUE FAIRE EN CAS DE PROBLÈME ?
+───────────────────────────────────────────
+
+Lorsque quelque chose ne fonctionne pas, la première réflexe est toujours de
+consulter les logs du container avec "docker logs mastermonitor-instance1".
+On y cherche des lignes contenant "Error" ou "ECONNREFUSED" pour identifier
+la nature du problème.
+
+Si le container ne démarre même pas, c'est souvent un problème de configuration
+ou de variable d'environnement manquante. Les logs afficheront généralement
+un message d'erreur explicite au démarrage.
+
+Si la connexion à l'Active Directory échoue, on peut tester directement depuis
+l'intérieur du container en entrant dedans avec "docker exec -it
+mastermonitor-instance1 sh" et en exécutant un petit script Node.js qui tente
+un bind LDAP. Si ce test échoue, le problème vient du réseau ou des
+identifiants. S'il réussit mais que le login de l'application échoue, le
+problème vient du code.
+
+De la même façon, on peut tester la connexion PostgreSQL depuis l'intérieur
+du container avec un script Node.js qui exécute une requête simple comme
+"SELECT 1".
+
+Pour revenir à une version précédente de l'application en urgence, il suffit
+de recharger une ancienne image tar si on en a conservé une, et de relancer
+le container avec "docker compose down && docker compose up -d".
+
+
+PARTIE 13 — RÉCAPITULATIF DES ADRESSES ET PORTS
+─────────────────────────────────────────────────
+
+L'infrastructure MasterMonitor repose sur quatre points d'accès réseau. Le
+serveur Active Directory est joignable à l'adresse 192.168.23.145 sur le
+port 389 (protocole LDAP). La base de données PostgreSQL est à l'adresse
+192.168.23.147 sur le port 5432. L'application MasterMonitor tourne sur la
+VM Instance 1 à l'adresse 192.168.23.153 sur le port 3000. Enfin, l'accès
+SSH à la VM Instance 1 pour l'administration utilise le même hôte
+192.168.23.153 sur le port 22.
+
+
+================================================================================
+   FIN DU GUIDE
+================================================================================
